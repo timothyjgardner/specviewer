@@ -34,13 +34,16 @@ This visualizer computes the spectrogram at multiple timescales (sigma values) a
 
 ### Interactive Viewer (Recommended)
 
-Start the Flask server:
+Start the Flask server from the specviewer directory:
 ```bash
-source venv/bin/activate
-python server.py
+cd specviewer              # navigate to the project folder
+source venv/bin/activate   # activate virtual environment
+python server.py           # start server
 ```
 
 Open http://localhost:8000 in your browser.
+
+**Note:** You must run `python server.py` from inside the specviewer folder so it can find the WAV files and viewer.html.
 
 **Controls:**
 
