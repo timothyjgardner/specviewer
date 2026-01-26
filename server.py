@@ -22,10 +22,10 @@ wav_cache = {}
 # Cache for computed spectrograms (keyed by parameters)
 spectrogram_cache = {}
 
-def get_cache_key(wav_name, sigmas, compute_type, fft_size, step_size, superres, lock_t, lock_f, crop_f):
+def get_cache_key(wav_name, sigmas, compute_type, fft_size, step_size, superres, lock_t, lock_f, log_offset, crop_f):
     """Generate a cache key from parameters."""
     sigma_str = ','.join(f'{s:.1f}' for s in sigmas)
-    return f"{wav_name}|{sigma_str}|{compute_type}|{fft_size}|{step_size}|{superres}|{lock_t}|{lock_f}|{crop_f:.1f}"
+    return f"{wav_name}|{sigma_str}|{compute_type}|{fft_size}|{step_size}|{superres}|{lock_t}|{lock_f}|{log_offset:.2f}|{crop_f:.1f}"
 
 def load_wav(wav_path):
     """Load and normalize WAV file, with caching."""
@@ -53,17 +53,17 @@ def load_wav(wav_path):
 
 
 def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024, step_size=72,
-                        superres=1, lock_t=15, lock_f=5, crop_f=1.0):
+                        superres=1, lock_t=15, lock_f=5, log_offset=0.3, crop_f=1.0):
     """Compute spectrogram with given parameters and return as base64 PNG."""
     # Check cache first
-    cache_key = get_cache_key(wav_name, sigmas, compute_type, fft_size, step_size, superres, lock_t, lock_f, crop_f)
+    cache_key = get_cache_key(wav_name, sigmas, compute_type, fft_size, step_size, superres, lock_t, lock_f, log_offset, crop_f)
     if cache_key in spectrogram_cache:
         print(f"  Cache hit: {wav_name} ({compute_type})")
         return spectrogram_cache[cache_key], None
     
     zoom_t = 1  # Fixed at 1
     zoom_f = superres  # Superresolution is applied to frequency axis
-    print(f"  Computing: {wav_name} ({compute_type}) σ={sigmas} fft={fft_size} step={step_size} superres={superres} lock=({lock_t},{lock_f})")
+    print(f"  Computing: {wav_name} ({compute_type}) σ={sigmas} fft={fft_size} step={step_size} superres={superres} lock=({lock_t},{lock_f}) logoff={log_offset}")
     
     script_dir = os.path.dirname(os.path.abspath(__file__))
     wav_path = os.path.join(script_dir, wav_name)
@@ -102,16 +102,16 @@ def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024,
     crop_start = freq_bins - keep_bins  # Start from high freq, keep low freq portion
     results = [img[crop_start:] for img in results]
     
-    # Normalize each channel
-    def normalize(img):
-        img = np.log(img + 0.1)
+    # Normalize each channel with log transform
+    def normalize(img, offset):
+        img = np.log(img + offset)
         img_min = img.min()
         img_max = img.max()
         if img_max > img_min:
             return (img - img_min) / (img_max - img_min)
         return np.zeros_like(img)
     
-    channels = [normalize(img) for img in results]
+    channels = [normalize(img, log_offset) for img in results]
     rgb = np.stack(channels, axis=-1)
     rgb_uint8 = (rgb * 255).astype(np.uint8)
     
@@ -156,11 +156,12 @@ def compute():
     sigmas = data.get('sigmas', [1.0, 2.0, 3.0])
     compute_type = data.get('type', 'ifdgram')  # 'ifdgram' or 'sonogram'
     fft_size = data.get('fft_size', 1024)
-    step_size = data.get('step_size', 256)
+    step_size = data.get('step_size', 72)
     superres = data.get('superres', 1)
     lock_t = data.get('lock_t', 15)
-    lock_f = data.get('lock_f', 15)
-    crop_f = data.get('crop_f', 0.5)
+    lock_f = data.get('lock_f', 5)
+    log_offset = data.get('log_offset', 0.3)
+    crop_f = data.get('crop_f', 1.0)
     
     if not wav_name:
         return jsonify({'error': 'No WAV file specified'}), 400
@@ -184,21 +185,23 @@ def compute():
     except (ValueError, TypeError):
         return jsonify({'error': 'Invalid FFT or step size'}), 400
     
-    # Validate superres, lock, and crop parameters
+    # Validate superres, lock, log_offset, and crop parameters
     try:
         superres = int(superres)
         lock_t = int(lock_t)
         lock_f = int(lock_f)
+        log_offset = float(log_offset)
         crop_f = float(crop_f)
         superres = max(1, min(10, superres))
         lock_t = max(1, min(50, lock_t))
         lock_f = max(1, min(50, lock_f))
+        log_offset = max(0.01, min(10.0, log_offset))
         crop_f = max(0.1, min(1.0, crop_f))
     except (ValueError, TypeError):
-        return jsonify({'error': 'Invalid superres, lock, or crop parameters'}), 400
+        return jsonify({'error': 'Invalid superres, lock, log_offset, or crop parameters'}), 400
     
     img_base64, error = compute_spectrogram(wav_name, sigmas, compute_type, fft_size, step_size,
-                                            superres, lock_t, lock_f, crop_f)
+                                            superres, lock_t, lock_f, log_offset, crop_f)
     
     if error:
         return jsonify({'error': error}), 400

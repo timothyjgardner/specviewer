@@ -162,6 +162,16 @@
             background: #2563eb;
             border-color: #3b82f6;
         }
+        
+        .section-label {
+            font-size: 9px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 2px 6px;
+            background: #252525;
+            border-radius: 3px;
+        }
     </style>
 </head>
 <body>
@@ -178,6 +188,8 @@
         </div>
         
         <div class="divider"></div>
+        
+        <span class="section-label">Compute</span>
         
         <div class="control-group">
             <label>σ (ms):</label>
@@ -199,10 +211,7 @@
                 <input type="number" id="sigma3" value="3.0" min="0.1" max="20" step="1">
                 <button onclick="adjustSigma('sigma3', 1)">+</button>
             </div>
-            <button class="primary" id="computeBtn" onclick="recompute(false)">Compute</button>
         </div>
-        
-        <div class="divider"></div>
         
         <div class="control-group">
             <label>FFT:</label>
@@ -218,55 +227,64 @@
         <div class="control-group">
             <label>Step:</label>
             <button onclick="adjustStep(-64)">−</button>
-            <input type="number" id="stepSize" value="72" min="8" max="1024" step="64" style="width:60px">
+            <input type="number" id="stepSize" value="72" min="8" max="1024" step="64" style="width:70px">
             <button onclick="adjustStep(64)">+</button>
         </div>
         
         <div class="control-group">
             <label>Superres:</label>
             <button onclick="adjustParam('superres', -1)">−</button>
-            <input type="number" id="superres" value="1" min="1" max="10" step="1" style="width:45px">
+            <input type="number" id="superres" value="1" min="1" max="10" step="1" style="width:55px">
             <button onclick="adjustParam('superres', 1)">+</button>
         </div>
         
         <div class="control-group">
             <label>TL:</label>
             <button onclick="adjustParam('lockT', -5)">−</button>
-            <input type="number" id="lockT" value="15" min="1" max="50" step="5" style="width:45px">
+            <input type="number" id="lockT" value="15" min="1" max="50" step="5" style="width:55px">
             <button onclick="adjustParam('lockT', 5)">+</button>
         </div>
         
         <div class="control-group">
             <label>FL:</label>
             <button onclick="adjustParam('lockF', -5)">−</button>
-            <input type="number" id="lockF" value="5" min="1" max="50" step="5" style="width:45px">
+            <input type="number" id="lockF" value="5" min="1" max="50" step="5" style="width:55px">
             <button onclick="adjustParam('lockF', 5)">+</button>
         </div>
         
         <div class="control-group">
-            <label>CropF:</label>
-            <button onclick="adjustCropF(-0.1)">−</button>
-            <input type="number" id="cropF" value="0.3" min="0.1" max="1" step="0.1" style="width:50px" oninput="render()">
-            <button onclick="adjustCropF(0.1)">+</button>
+            <label>LogOff:</label>
+            <button onclick="adjustLogOffset(-0.1)">−</button>
+            <input type="number" id="logOffset" value="0.3" min="0.01" max="10" step="0.1" style="width:60px">
+            <button onclick="adjustLogOffset(0.1)">+</button>
         </div>
         
+        <button class="primary" id="computeBtn" onclick="recompute(false)">Compute</button>
+        
         <div class="divider"></div>
+        
+        <span class="section-label">Display</span>
+        
+        <div class="control-group">
+            <label>CropF:</label>
+            <button onclick="adjustCropF(-0.1)">−</button>
+            <input type="number" id="cropF" value="0.3" min="0.1" max="1" step="0.1" style="width:60px" oninput="render()">
+            <button onclick="adjustCropF(0.1)">+</button>
+        </div>
         
         <div class="control-group">
             <label>Min:</label>
             <button onclick="adjustThreshold('threshMin', -0.05)">−</button>
-            <input type="number" id="threshMin" value="0.15" min="0" max="1" step="0.05" style="width:50px" oninput="render()">
+            <input type="number" id="threshMin" value="0.15" min="0" max="1" step="0.05" style="width:60px" oninput="render()">
             <button onclick="adjustThreshold('threshMin', 0.05)">+</button>
         </div>
         
         <div class="control-group">
             <label>Max:</label>
             <button onclick="adjustThreshold('threshMax', -0.05)">−</button>
-            <input type="number" id="threshMax" value="0.85" min="0" max="1" step="0.05" style="width:50px" oninput="render()">
+            <input type="number" id="threshMax" value="0.85" min="0" max="1" step="0.05" style="width:60px" oninput="render()">
             <button onclick="adjustThreshold('threshMax', 0.05)">+</button>
         </div>
-        
-        <div class="divider"></div>
         
         <div class="control-group">
             <label>X:</label>
@@ -489,6 +507,13 @@
             input.value = value;
         }
         
+        function adjustLogOffset(delta) {
+            const input = document.getElementById('logOffset');
+            let value = parseFloat(input.value) || 0.1;
+            value = Math.max(0.01, Math.min(10, value + delta));
+            input.value = value.toFixed(2);
+        }
+        
         function adjustCropF(delta) {
             const input = document.getElementById('cropF');
             let value = parseFloat(input.value) || 0.5;
@@ -542,10 +567,11 @@
                 parseFloat(document.getElementById('sigma3').value) || 3.0
             ];
             const fftSize = parseInt(document.getElementById('fftSize').value) || 1024;
-            const stepSize = parseInt(document.getElementById('stepSize').value) || 256;
+            const stepSize = parseInt(document.getElementById('stepSize').value) || 72;
             const superres = parseInt(document.getElementById('superres').value) || 1;
             const lockT = parseInt(document.getElementById('lockT').value) || 15;
-            const lockF = parseInt(document.getElementById('lockF').value) || 15;
+            const lockF = parseInt(document.getElementById('lockF').value) || 5;
+            const logOffset = parseFloat(document.getElementById('logOffset').value) || 0.1;
             // cropF now handled in WebGL, always compute full frequency range
             
             status.textContent = 'Computing...';
@@ -564,6 +590,7 @@
                         superres: superres,
                         lock_t: lockT,
                         lock_f: lockF,
+                        log_offset: logOffset,
                         crop_f: 1.0  // Always compute full range, WebGL handles cropping
                     })
                 });
@@ -759,6 +786,7 @@
             document.getElementById('superres').value = '1';
             document.getElementById('lockT').value = '15';
             document.getElementById('lockF').value = '5';
+            document.getElementById('logOffset').value = '0.3';
             document.getElementById('cropF').value = '0.3';
             document.getElementById('threshMin').value = '0.15';
             document.getElementById('threshMax').value = '0.85';
