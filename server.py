@@ -22,10 +22,10 @@ wav_cache = {}
 # Cache for computed spectrograms (keyed by parameters)
 spectrogram_cache = {}
 
-def get_cache_key(wav_name, sigmas, compute_type, fft_size, step_size):
+def get_cache_key(wav_name, sigmas, compute_type, fft_size, step_size, superres, lock_t, lock_f, crop_f):
     """Generate a cache key from parameters."""
     sigma_str = ','.join(f'{s:.1f}' for s in sigmas)
-    return f"{wav_name}|{sigma_str}|{compute_type}|{fft_size}|{step_size}"
+    return f"{wav_name}|{sigma_str}|{compute_type}|{fft_size}|{step_size}|{superres}|{lock_t}|{lock_f}|{crop_f:.1f}"
 
 def load_wav(wav_path):
     """Load and normalize WAV file, with caching."""
@@ -52,15 +52,18 @@ def load_wav(wav_path):
     return sampling_rate, data
 
 
-def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024, step_size=256):
+def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024, step_size=256,
+                        superres=1, lock_t=15, lock_f=15, crop_f=0.5):
     """Compute spectrogram with given parameters and return as base64 PNG."""
     # Check cache first
-    cache_key = get_cache_key(wav_name, sigmas, compute_type, fft_size, step_size)
+    cache_key = get_cache_key(wav_name, sigmas, compute_type, fft_size, step_size, superres, lock_t, lock_f, crop_f)
     if cache_key in spectrogram_cache:
         print(f"  Cache hit: {wav_name} ({compute_type})")
         return spectrogram_cache[cache_key], None
     
-    print(f"  Computing: {wav_name} ({compute_type}) σ={sigmas} fft={fft_size} step={step_size}")
+    zoom_t = 1  # Fixed at 1
+    zoom_f = superres  # Superresolution is applied to frequency axis
+    print(f"  Computing: {wav_name} ({compute_type}) σ={sigmas} fft={fft_size} step={step_size} superres={superres} lock=({lock_t},{lock_f})")
     
     script_dir = os.path.dirname(os.path.abspath(__file__))
     wav_path = os.path.join(script_dir, wav_name)
@@ -73,10 +76,8 @@ def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024,
     # Parameters
     n = fft_size
     overlap = n - step_size
-    zoom_t = 1
-    zoom_f = 1
-    tl = 15
-    fl = 15
+    tl = lock_t
+    fl = lock_f
     
     # Limit length for WebGL
     MAX_IMAGE_WIDTH = 16384
@@ -95,9 +96,11 @@ def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024,
         else:
             results.append(np.abs(sonogram))
     
-    # Only bottom half of frequency range
-    half_freq = results[0].shape[0] // 2
-    results = [img[half_freq:] for img in results]
+    # Crop to show only low frequency portion (crop_f=0.5 means bottom half, crop_f=1.0 means full)
+    freq_bins = results[0].shape[0]
+    keep_bins = int(freq_bins * crop_f)
+    crop_start = freq_bins - keep_bins  # Start from high freq, keep low freq portion
+    results = [img[crop_start:] for img in results]
     
     # Normalize each channel
     def normalize(img):
@@ -154,6 +157,10 @@ def compute():
     compute_type = data.get('type', 'ifdgram')  # 'ifdgram' or 'sonogram'
     fft_size = data.get('fft_size', 1024)
     step_size = data.get('step_size', 256)
+    superres = data.get('superres', 1)
+    lock_t = data.get('lock_t', 15)
+    lock_f = data.get('lock_f', 15)
+    crop_f = data.get('crop_f', 0.5)
     
     if not wav_name:
         return jsonify({'error': 'No WAV file specified'}), 400
@@ -177,7 +184,21 @@ def compute():
     except (ValueError, TypeError):
         return jsonify({'error': 'Invalid FFT or step size'}), 400
     
-    img_base64, error = compute_spectrogram(wav_name, sigmas, compute_type, fft_size, step_size)
+    # Validate superres, lock, and crop parameters
+    try:
+        superres = int(superres)
+        lock_t = int(lock_t)
+        lock_f = int(lock_f)
+        crop_f = float(crop_f)
+        superres = max(1, min(10, superres))
+        lock_t = max(1, min(50, lock_t))
+        lock_f = max(1, min(50, lock_f))
+        crop_f = max(0.1, min(1.0, crop_f))
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Invalid superres, lock, or crop parameters'}), 400
+    
+    img_base64, error = compute_spectrogram(wav_name, sigmas, compute_type, fft_size, step_size,
+                                            superres, lock_t, lock_f, crop_f)
     
     if error:
         return jsonify({'error': error}), 400
@@ -187,7 +208,11 @@ def compute():
         'sigmas': sigmas,
         'type': compute_type,
         'fft_size': fft_size,
-        'step_size': step_size
+        'step_size': step_size,
+        'superres': superres,
+        'lock_t': lock_t,
+        'lock_f': lock_f,
+        'crop_f': crop_f
     })
 
 

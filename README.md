@@ -52,8 +52,12 @@ Open http://localhost:8000 in your browser.
 - **σ (ms)** - Three sigma values for R, G, B channels (use +/- buttons or type values)
 - **FFT** - FFT window size (256, 512, 1024, 2048, 4096)
 - **Step** - Samples between windows (smaller = more overlap = higher time resolution but wider images)
+- **Superres** - Frequency superresolution factor (1-10, increases frequency detail)
+- **TL** - Temporal locking window (controls stray point removal in time)
+- **FL** - Frequency locking window (controls stray point removal in frequency)
+- **CropF** - Frequency crop factor (0.1-1.0, fraction of spectrum to show from low end)
 - **Compute** - Recompute with current settings (or press Enter)
-- **X/Y zoom** - Independent time and frequency zoom
+- **X/Y zoom** - Independent time and frequency zoom in viewer
 - **Mouse drag** - Pan around the image
 - **Mouse wheel** - Zoom both axes at cursor position
 - **W/S keys** - Frequency (Y) zoom in/out
@@ -97,9 +101,21 @@ The number of samples between successive windows. `overlap = fft_size - step_siz
 - **Smaller step** - More overlap, sharper lines, but wider images and slower computation
 - **Larger step** - Less overlap, faster computation, narrower images
 
-### Other Parameters (in code)
-- **tl, fl** - Temporal and frequency locking windows (controls stray point removal)
-- **zoom_f** - Frequency zoom factor in output
+### Superresolution
+Frequency superresolution factor (1-10). Increases the number of frequency bins in the output by interpolating during the reassignment process. Higher values show more frequency detail but increase computation time.
+
+### Locking Windows (TL, FL)
+Control the removal of "stray points" in the reassigned spectrogram:
+- **TL (Temporal Locking)** - Maximum allowed displacement in time (default: 15)
+- **FL (Frequency Locking)** - Maximum allowed displacement in frequency (default: 15)
+- **Smaller values** - Sharper lines but may introduce gaps
+- **Larger values** - Preserves more signal but may be noisier
+
+### CropF (Frequency Crop)
+Controls what fraction of the frequency spectrum to display (0.1-1.0):
+- **0.5** (default) - Show bottom half of frequency range
+- **1.0** - Show full frequency spectrum
+- **0.25** - Show only bottom quarter (lowest frequencies)
 
 ## WebGL Max-Pooling
 

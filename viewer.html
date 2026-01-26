@@ -222,6 +222,34 @@
             <button onclick="adjustStep(64)">+</button>
         </div>
         
+        <div class="control-group">
+            <label>Superres:</label>
+            <button onclick="adjustParam('superres', -1)">−</button>
+            <input type="number" id="superres" value="1" min="1" max="10" step="1" style="width:45px">
+            <button onclick="adjustParam('superres', 1)">+</button>
+        </div>
+        
+        <div class="control-group">
+            <label>TL:</label>
+            <button onclick="adjustParam('lockT', -5)">−</button>
+            <input type="number" id="lockT" value="15" min="1" max="50" step="5" style="width:45px">
+            <button onclick="adjustParam('lockT', 5)">+</button>
+        </div>
+        
+        <div class="control-group">
+            <label>FL:</label>
+            <button onclick="adjustParam('lockF', -5)">−</button>
+            <input type="number" id="lockF" value="15" min="1" max="50" step="5" style="width:45px">
+            <button onclick="adjustParam('lockF', 5)">+</button>
+        </div>
+        
+        <div class="control-group">
+            <label>CropF:</label>
+            <button onclick="adjustCropF(-0.1)">−</button>
+            <input type="number" id="cropF" value="0.5" min="0.1" max="1" step="0.1" style="width:50px">
+            <button onclick="adjustCropF(0.1)">+</button>
+        </div>
+        
         <div class="divider"></div>
         
         <div class="control-group">
@@ -417,6 +445,22 @@
             input.value = value;
         }
         
+        function adjustParam(id, delta) {
+            const input = document.getElementById(id);
+            let value = parseInt(input.value) || 1;
+            const min = parseInt(input.min) || 1;
+            const max = parseInt(input.max) || 50;
+            value = Math.max(min, Math.min(max, value + delta));
+            input.value = value;
+        }
+        
+        function adjustCropF(delta) {
+            const input = document.getElementById('cropF');
+            let value = parseFloat(input.value) || 0.5;
+            value = Math.max(0.1, Math.min(1.0, value + delta));
+            input.value = value.toFixed(1);
+        }
+        
         async function loadWavList() {
             try {
                 const response = await fetch('/api/wavfiles');
@@ -455,6 +499,10 @@
             ];
             const fftSize = parseInt(document.getElementById('fftSize').value) || 1024;
             const stepSize = parseInt(document.getElementById('stepSize').value) || 256;
+            const superres = parseInt(document.getElementById('superres').value) || 1;
+            const lockT = parseInt(document.getElementById('lockT').value) || 15;
+            const lockF = parseInt(document.getElementById('lockF').value) || 15;
+            const cropF = parseFloat(document.getElementById('cropF').value) || 0.5;
             
             status.textContent = 'Computing...';
             computeBtn.disabled = true;
@@ -468,7 +516,11 @@
                         sigmas: sigmas,
                         type: currentType,
                         fft_size: fftSize,
-                        step_size: stepSize
+                        step_size: stepSize,
+                        superres: superres,
+                        lock_t: lockT,
+                        lock_f: lockF,
+                        crop_f: cropF
                     })
                 });
                 
@@ -653,6 +705,10 @@
             document.getElementById('sigma3').value = '3.0';
             document.getElementById('fftSize').value = '1024';
             document.getElementById('stepSize').value = '256';
+            document.getElementById('superres').value = '1';
+            document.getElementById('lockT').value = '15';
+            document.getElementById('lockF').value = '15';
+            document.getElementById('cropF').value = '0.5';
         }
         
         // WAV select change - reset to defaults
