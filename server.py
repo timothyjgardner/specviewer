@@ -53,7 +53,7 @@ def load_wav(wav_path):
 
 
 def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024, step_size=72,
-                        superres=1, lock_t=15, lock_f=5, log_offset=0.3, crop_f=1.0):
+                        superres=1, lock_t=5, lock_f=5, log_offset=0.3, crop_f=1.0):
     """Compute spectrogram with given parameters and return as base64 PNG."""
     # Check cache first
     cache_key = get_cache_key(wav_name, sigmas, compute_type, fft_size, step_size, superres, lock_t, lock_f, log_offset, crop_f)
@@ -79,13 +79,14 @@ def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024,
     tl = lock_t
     fl = lock_f
     
-    # Limit length for WebGL
+    # Limit length for WebGL texture size
     MAX_IMAGE_WIDTH = 16384
     step = n - overlap
     max_samples = (MAX_IMAGE_WIDTH - 1) * step + n
     
     if len(data) > max_samples:
-        data = data[:len(data) // 2]
+        print(f"  Truncating from {len(data)} to {max_samples} samples (step={step})")
+        data = data[:max_samples]
     
     # Compute for each sigma
     results = []
@@ -158,7 +159,7 @@ def compute():
     fft_size = data.get('fft_size', 1024)
     step_size = data.get('step_size', 72)
     superres = data.get('superres', 1)
-    lock_t = data.get('lock_t', 15)
+    lock_t = data.get('lock_t', 5)
     lock_f = data.get('lock_f', 5)
     log_offset = data.get('log_offset', 0.3)
     crop_f = data.get('crop_f', 1.0)

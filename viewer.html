@@ -241,7 +241,7 @@
         <div class="control-group">
             <label>TL:</label>
             <button onclick="adjustParam('lockT', -5)">−</button>
-            <input type="number" id="lockT" value="15" min="1" max="50" step="5" style="width:55px">
+            <input type="number" id="lockT" value="5" min="1" max="50" step="5" style="width:55px">
             <button onclick="adjustParam('lockT', 5)">+</button>
         </div>
         
@@ -268,21 +268,21 @@
         <div class="control-group">
             <label>CropF:</label>
             <button onclick="adjustCropF(-0.1)">−</button>
-            <input type="number" id="cropF" value="0.3" min="0.1" max="1" step="0.1" style="width:60px" oninput="render()">
+            <input type="number" id="cropF" value="0.4" min="0.1" max="1" step="0.1" style="width:60px" oninput="render()">
             <button onclick="adjustCropF(0.1)">+</button>
         </div>
         
         <div class="control-group">
             <label>Min:</label>
             <button onclick="adjustThreshold('threshMin', -0.05)">−</button>
-            <input type="number" id="threshMin" value="0.15" min="0" max="1" step="0.05" style="width:60px" oninput="render()">
+            <input type="number" id="threshMin" value="0.05" min="0" max="1" step="0.05" style="width:60px" oninput="render()">
             <button onclick="adjustThreshold('threshMin', 0.05)">+</button>
         </div>
         
         <div class="control-group">
             <label>Max:</label>
             <button onclick="adjustThreshold('threshMax', -0.05)">−</button>
-            <input type="number" id="threshMax" value="0.85" min="0" max="1" step="0.05" style="width:60px" oninput="render()">
+            <input type="number" id="threshMax" value="0.80" min="0" max="1" step="0.05" style="width:60px" oninput="render()">
             <button onclick="adjustThreshold('threshMax', 0.05)">+</button>
         </div>
         
@@ -784,12 +784,12 @@
             document.getElementById('fftSize').value = '1024';
             document.getElementById('stepSize').value = '72';
             document.getElementById('superres').value = '1';
-            document.getElementById('lockT').value = '15';
+            document.getElementById('lockT').value = '5';
             document.getElementById('lockF').value = '5';
             document.getElementById('logOffset').value = '0.3';
-            document.getElementById('cropF').value = '0.3';
-            document.getElementById('threshMin').value = '0.15';
-            document.getElementById('threshMax').value = '0.85';
+            document.getElementById('cropF').value = '0.4';
+            document.getElementById('threshMin').value = '0.05';
+            document.getElementById('threshMax').value = '0.80';
         }
         
         // WAV select change - reset to defaults
