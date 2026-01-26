@@ -1,0 +1,23 @@
+# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# WAV files (except canary.wav)
+*.wav
+!canary.wav
+
+# Generated images
+*_ifdgram.png
+*_sonogram.png
+ifdv_example.png
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp

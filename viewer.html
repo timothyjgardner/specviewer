@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spectrogram Viewer (WebGL Max-Pool)</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #1a1a1a;
+            color: #fff;
+            overflow: hidden;
+        }
+        
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(30, 30, 30, 0.95);
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            z-index: 100;
+            border-bottom: 1px solid #333;
+            flex-wrap: wrap;
+        }
+        
+        .header h1 {
+            font-size: 15px;
+            font-weight: 500;
+        }
+        
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .control-group label {
+            font-size: 11px;
+            color: #888;
+        }
+        
+        button {
+            background: #333;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 4px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+        
+        button:hover {
+            background: #444;
+        }
+        
+        button:active {
+            background: #555;
+        }
+        
+        button.primary {
+            background: #2563eb;
+            border-color: #3b82f6;
+        }
+        
+        button.primary:hover {
+            background: #3b82f6;
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        select, input[type="number"] {
+            background: #333;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+        
+        input[type="number"] {
+            width: 55px;
+            text-align: center;
+        }
+        
+        .zoom-value {
+            font-size: 11px;
+            color: #fff;
+            min-width: 42px;
+            text-align: center;
+            background: #222;
+            padding: 3px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        
+        .current-info {
+            font-size: 11px;
+            color: #888;
+        }
+        
+        .viewer {
+            margin-top: 50px;
+            width: 100vw;
+            height: calc(100vh - 50px);
+            overflow: hidden;
+            position: relative;
+        }
+        
+        #glCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        
+        .divider {
+            width: 1px;
+            height: 22px;
+            background: #444;
+        }
+        
+        .status {
+            font-size: 11px;
+            color: #666;
+            font-family: monospace;
+        }
+        
+        .sigma-input {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .sigma-input .color-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        
+        .sigma-input .color-dot.red { background: #ff4444; }
+        .sigma-input .color-dot.green { background: #44ff44; }
+        .sigma-input .color-dot.blue { background: #4444ff; }
+        
+        .type-toggle {
+            display: flex;
+            gap: 4px;
+        }
+        
+        .type-toggle button.active {
+            background: #2563eb;
+            border-color: #3b82f6;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Spectrogram</h1>
+        
+        <div class="divider"></div>
+        
+        <select id="wavSelect"></select>
+        
+        <div class="type-toggle">
+            <button id="btnIfdgram" class="active" onclick="setType('ifdgram')">ifdgram</button>
+            <button id="btnSonogram" onclick="setType('sonogram')">sonogram</button>
+        </div>
+        
+        <div class="divider"></div>
+        
+        <div class="control-group">
+            <label>σ (ms):</label>
+            <div class="sigma-input">
+                <span class="color-dot red"></span>
+                <button onclick="adjustSigma('sigma1', -1)">−</button>
+                <input type="number" id="sigma1" value="1.0" min="0.1" max="20" step="1">
+                <button onclick="adjustSigma('sigma1', 1)">+</button>
+            </div>
+            <div class="sigma-input">
+                <span class="color-dot green"></span>
+                <button onclick="adjustSigma('sigma2', -1)">−</button>
+                <input type="number" id="sigma2" value="2.0" min="0.1" max="20" step="1">
+                <button onclick="adjustSigma('sigma2', 1)">+</button>
+            </div>
+            <div class="sigma-input">
+                <span class="color-dot blue"></span>
+                <button onclick="adjustSigma('sigma3', -1)">−</button>
+                <input type="number" id="sigma3" value="3.0" min="0.1" max="20" step="1">
+                <button onclick="adjustSigma('sigma3', 1)">+</button>
+            </div>
+            <button class="primary" id="computeBtn" onclick="recompute(false)">Compute</button>
+        </div>
+        
+        <div class="divider"></div>
+        
+        <div class="control-group">
+            <label>FFT:</label>
+            <select id="fftSize">
+                <option value="256">256</option>
+                <option value="512">512</option>
+                <option value="1024" selected>1024</option>
+                <option value="2048">2048</option>
+                <option value="4096">4096</option>
+            </select>
+        </div>
+        
+        <div class="control-group">
+            <label>Step:</label>
+            <button onclick="adjustStep(-64)">−</button>
+            <input type="number" id="stepSize" value="256" min="8" max="1024" step="64" style="width:60px">
+            <button onclick="adjustStep(64)">+</button>
+        </div>
+        
+        <div class="divider"></div>
+        
+        <div class="control-group">
+            <label>X:</label>
+            <button onclick="adjustZoom('x', 0.8)">−</button>
+            <span class="zoom-value" id="zoomX">1.00x</span>
+            <button onclick="adjustZoom('x', 1.25)">+</button>
+        </div>
+        
+        <div class="control-group">
+            <label>Y:</label>
+            <button onclick="adjustZoom('y', 0.8)">−</button>
+            <span class="zoom-value" id="zoomY">1.00x</span>
+            <button onclick="adjustZoom('y', 1.25)">+</button>
+        </div>
+        
+        <button onclick="resetView()">Reset</button>
+        
+        <span class="status" id="status">Loading...</span>
+    </div>
+    
+    <div class="viewer" id="viewer">
+        <canvas id="glCanvas"></canvas>
+    </div>
+
+    <!-- Vertex Shader -->
+    <script id="vertex-shader" type="x-shader/x-vertex">
+        attribute vec2 a_position;
+        varying vec2 v_position;
+        
+        void main() {
+            gl_Position = vec4(a_position, 0.0, 1.0);
+            v_position = (a_position + 1.0) * 0.5;
+        }
+    </script>
+    
+    <!-- Fragment Shader with Max-Pooling -->
+    <script id="fragment-shader" type="x-shader/x-fragment">
+        precision highp float;
+        
+        uniform sampler2D u_image;
+        uniform vec2 u_textureSize;
+        uniform vec2 u_canvasSize;
+        uniform vec2 u_scale;
+        uniform vec2 u_pan;
+        
+        varying vec2 v_position;
+        
+        void main() {
+            vec2 screenPos = v_position * u_canvasSize;
+            screenPos.y = u_canvasSize.y - screenPos.y;
+            
+            vec2 imagePos = screenPos / u_scale + u_pan;
+            vec2 pixelsPerScreen = 1.0 / u_scale;
+            
+            float fSamplesX = clamp(ceil(pixelsPerScreen.x), 1.0, 16.0);
+            float fSamplesY = clamp(ceil(pixelsPerScreen.y), 1.0, 16.0);
+            float stepX = pixelsPerScreen.x / fSamplesX;
+            float stepY = pixelsPerScreen.y / fSamplesY;
+            
+            vec3 maxColor = vec3(0.0);
+            
+            for (int y = 0; y < 16; y++) {
+                if (float(y) >= fSamplesY) continue;
+                for (int x = 0; x < 16; x++) {
+                    if (float(x) >= fSamplesX) continue;
+                    
+                    vec2 samplePos = imagePos + vec2(float(x) * stepX, float(y) * stepY);
+                    vec2 uv = samplePos / u_textureSize;
+                    
+                    if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {
+                        maxColor = max(maxColor, texture2D(u_image, uv).rgb);
+                    }
+                }
+            }
+            
+            vec2 baseUV = imagePos / u_textureSize;
+            if (baseUV.x < -0.5 || baseUV.x > 1.5 || baseUV.y < -0.5 || baseUV.y > 1.5) {
+                gl_FragColor = vec4(0.1, 0.1, 0.1, 1.0);
+            } else {
+                gl_FragColor = vec4(maxColor, 1.0);
+            }
+        }
+    </script>
+
+    <script>
+        let wavFiles = [];
+        let currentWav = '';
+        let currentType = 'ifdgram';
+        let scaleX = 1.0;
+        let scaleY = 1.0;
+        let panX = 0;
+        let panY = 0;
+        let imageWidth = 1;
+        let imageHeight = 1;
+        
+        const SCALE_MIN = 0.02;
+        const SCALE_MAX = 20.0;
+        
+        let gl, program, texture;
+        let u_textureSize, u_canvasSize, u_scale, u_pan;
+        
+        const canvas = document.getElementById('glCanvas');
+        const viewer = document.getElementById('viewer');
+        const wavSelect = document.getElementById('wavSelect');
+        const status = document.getElementById('status');
+        const zoomXDisplay = document.getElementById('zoomX');
+        const zoomYDisplay = document.getElementById('zoomY');
+        const computeBtn = document.getElementById('computeBtn');
+        
+        function initWebGL() {
+            gl = canvas.getContext('webgl', { preserveDrawingBuffer: true });
+            if (!gl) {
+                status.textContent = 'WebGL not supported';
+                return false;
+            }
+            
+            const vertSrc = document.getElementById('vertex-shader').text;
+            const fragSrc = document.getElementById('fragment-shader').text;
+            
+            const vertShader = gl.createShader(gl.VERTEX_SHADER);
+            gl.shaderSource(vertShader, vertSrc);
+            gl.compileShader(vertShader);
+            if (!gl.getShaderParameter(vertShader, gl.COMPILE_STATUS)) {
+                console.error('Vertex shader error:', gl.getShaderInfoLog(vertShader));
+                status.textContent = 'Shader error';
+                return false;
+            }
+            
+            const fragShader = gl.createShader(gl.FRAGMENT_SHADER);
+            gl.shaderSource(fragShader, fragSrc);
+            gl.compileShader(fragShader);
+            if (!gl.getShaderParameter(fragShader, gl.COMPILE_STATUS)) {
+                console.error('Fragment shader error:', gl.getShaderInfoLog(fragShader));
+                status.textContent = 'Shader error';
+                return false;
+            }
+            
+            program = gl.createProgram();
+            gl.attachShader(program, vertShader);
+            gl.attachShader(program, fragShader);
+            gl.linkProgram(program);
+            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                console.error('Link error:', gl.getProgramInfoLog(program));
+                status.textContent = 'Shader link error';
+                return false;
+            }
+            
+            gl.useProgram(program);
+            
+            const positions = new Float32Array([
+                -1, -1,   1, -1,   -1, 1,
+                -1,  1,   1, -1,    1, 1
+            ]);
+            const posBuf = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+            gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+            
+            const a_position = gl.getAttribLocation(program, 'a_position');
+            gl.enableVertexAttribArray(a_position);
+            gl.vertexAttribPointer(a_position, 2, gl.FLOAT, false, 0, 0);
+            
+            u_textureSize = gl.getUniformLocation(program, 'u_textureSize');
+            u_canvasSize = gl.getUniformLocation(program, 'u_canvasSize');
+            u_scale = gl.getUniformLocation(program, 'u_scale');
+            u_pan = gl.getUniformLocation(program, 'u_pan');
+            
+            texture = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0,0,0,255]));
+            
+            return true;
+        }
+        
+        function setType(type) {
+            currentType = type;
+            document.getElementById('btnIfdgram').classList.toggle('active', type === 'ifdgram');
+            document.getElementById('btnSonogram').classList.toggle('active', type === 'sonogram');
+            recompute(false);  // Don't reset view when switching type
+        }
+        
+        function adjustSigma(id, delta) {
+            const input = document.getElementById(id);
+            let value = parseFloat(input.value) || 1;
+            value = Math.max(0.1, Math.min(20, value + delta));
+            input.value = value.toFixed(1);
+        }
+        
+        function adjustStep(delta) {
+            const input = document.getElementById('stepSize');
+            let value = parseInt(input.value) || 256;
+            value = Math.max(8, Math.min(1024, value + delta));
+            input.value = value;
+        }
+        
+        async function loadWavList() {
+            try {
+                const response = await fetch('/api/wavfiles');
+                wavFiles = await response.json();
+                
+                wavSelect.innerHTML = '';
+                wavFiles.forEach(wav => {
+                    const option = document.createElement('option');
+                    option.value = wav;
+                    option.textContent = wav.replace('.wav', '');
+                    wavSelect.appendChild(option);
+                });
+                
+                if (wavFiles.length > 0) {
+                    currentWav = wavFiles[0];
+                    recompute();
+                }
+            } catch (e) {
+                status.textContent = 'Failed to load WAV list';
+                console.error(e);
+            }
+        }
+        
+        async function recompute(shouldResetView = true) {
+            const wav = wavSelect.value;
+            if (!wav) return;
+            
+            // Check if WAV file changed
+            const wavChanged = (wav !== currentWav);
+            currentWav = wav;
+            
+            const sigmas = [
+                parseFloat(document.getElementById('sigma1').value) || 1.0,
+                parseFloat(document.getElementById('sigma2').value) || 2.0,
+                parseFloat(document.getElementById('sigma3').value) || 3.0
+            ];
+            const fftSize = parseInt(document.getElementById('fftSize').value) || 1024;
+            const stepSize = parseInt(document.getElementById('stepSize').value) || 256;
+            
+            status.textContent = 'Computing...';
+            computeBtn.disabled = true;
+            
+            try {
+                const response = await fetch('/api/compute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        wav: wav,
+                        sigmas: sigmas,
+                        type: currentType,
+                        fft_size: fftSize,
+                        step_size: stepSize
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.error) {
+                    status.textContent = 'Error: ' + result.error;
+                    return;
+                }
+                
+                // Load base64 image into texture
+                const img = new Image();
+                img.onload = function() {
+                    imageWidth = img.width;
+                    imageHeight = img.height;
+                    
+                    gl.bindTexture(gl.TEXTURE_2D, texture);
+                    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+                    
+                    status.textContent = `${imageWidth}×${imageHeight} σ=[${sigmas.join(',')}]`;
+                    
+                    // Only reset view if WAV changed or explicitly requested
+                    if (shouldResetView || wavChanged) {
+                        resetView();
+                    } else {
+                        render();  // Just re-render with current zoom/pan
+                    }
+                };
+                img.src = 'data:image/png;base64,' + result.image;
+                
+            } catch (e) {
+                status.textContent = 'Compute failed';
+                console.error(e);
+            } finally {
+                computeBtn.disabled = false;
+            }
+        }
+        
+        function resizeCanvas() {
+            const rect = viewer.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+            render();
+        }
+        
+        function render() {
+            gl.clearColor(0.1, 0.1, 0.1, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            
+            gl.uniform2f(u_textureSize, imageWidth, imageHeight);
+            gl.uniform2f(u_canvasSize, canvas.width, canvas.height);
+            gl.uniform2f(u_scale, scaleX, scaleY);
+            gl.uniform2f(u_pan, panX, panY);
+            
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+        }
+        
+        function adjustZoom(axis, factor) {
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            
+            if (axis === 'x') {
+                const imgX = cx / scaleX + panX;
+                scaleX = Math.max(SCALE_MIN, Math.min(SCALE_MAX, scaleX * factor));
+                panX = imgX - cx / scaleX;
+            } else {
+                const imgY = (canvas.height - cy) / scaleY + panY;
+                scaleY = Math.max(SCALE_MIN, Math.min(SCALE_MAX, scaleY * factor));
+                panY = imgY - (canvas.height - cy) / scaleY;
+            }
+            
+            updateDisplay();
+            render();
+        }
+        
+        function resetView() {
+            scaleX = canvas.width / imageWidth;
+            scaleY = canvas.height / imageHeight;
+            panX = 0;
+            panY = 0;
+            updateDisplay();
+            render();
+        }
+        
+        function updateDisplay() {
+            zoomXDisplay.textContent = scaleX.toFixed(2) + 'x';
+            zoomYDisplay.textContent = scaleY.toFixed(2) + 'x';
+        }
+        
+        // Mouse drag
+        let dragging = false;
+        let lastX, lastY;
+        
+        canvas.addEventListener('mousedown', (e) => {
+            dragging = true;
+            lastX = e.clientX;
+            lastY = e.clientY;
+            canvas.style.cursor = 'grabbing';
+        });
+        
+        window.addEventListener('mousemove', (e) => {
+            if (!dragging) return;
+            const dx = e.clientX - lastX;
+            const dy = e.clientY - lastY;
+            panX -= dx / scaleX;
+            panY += dy / scaleY;
+            lastX = e.clientX;
+            lastY = e.clientY;
+            render();
+        });
+        
+        window.addEventListener('mouseup', () => {
+            dragging = false;
+            canvas.style.cursor = 'grab';
+        });
+        
+        canvas.style.cursor = 'grab';
+        
+        // Mouse wheel
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const factor = e.deltaY > 0 ? 0.9 : 1.1;
+            
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            
+            const imgX = mx / scaleX + panX;
+            const imgY = (canvas.height - my) / scaleY + panY;
+            
+            scaleX = Math.max(SCALE_MIN, Math.min(SCALE_MAX, scaleX * factor));
+            scaleY = Math.max(SCALE_MIN, Math.min(SCALE_MAX, scaleY * factor));
+            
+            panX = imgX - mx / scaleX;
+            panY = imgY - (canvas.height - my) / scaleY;
+            
+            updateDisplay();
+            render();
+        });
+        
+        // Keyboard
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+            
+            switch(e.key.toLowerCase()) {
+                case 'w':
+                    adjustZoom('y', 1.25);
+                    e.preventDefault();
+                    break;
+                case 's':
+                    adjustZoom('y', 0.8);
+                    e.preventDefault();
+                    break;
+                case 'd':
+                    adjustZoom('x', 1.25);
+                    e.preventDefault();
+                    break;
+                case 'a':
+                    adjustZoom('x', 0.8);
+                    e.preventDefault();
+                    break;
+                case 'r':
+                    resetView();
+                    e.preventDefault();
+                    break;
+                case 'enter':
+                    recompute();
+                    e.preventDefault();
+                    break;
+            }
+        });
+        
+        // Reset parameters to defaults
+        function resetParams() {
+            document.getElementById('sigma1').value = '1.0';
+            document.getElementById('sigma2').value = '2.0';
+            document.getElementById('sigma3').value = '3.0';
+            document.getElementById('fftSize').value = '1024';
+            document.getElementById('stepSize').value = '256';
+        }
+        
+        // WAV select change - reset to defaults
+        wavSelect.addEventListener('change', () => {
+            resetParams();
+            recompute();
+        });
+        
+        // Init
+        async function init() {
+            if (!initWebGL()) return;
+            
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            
+            await loadWavList();
+        }
+        
+        init();
+    </script>
+</body>
+</html>
