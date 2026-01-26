@@ -52,8 +52,8 @@ def load_wav(wav_path):
     return sampling_rate, data
 
 
-def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024, step_size=256,
-                        superres=1, lock_t=15, lock_f=15, crop_f=0.5):
+def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024, step_size=72,
+                        superres=1, lock_t=15, lock_f=5, crop_f=1.0):
     """Compute spectrogram with given parameters and return as base64 PNG."""
     # Check cache first
     cache_key = get_cache_key(wav_name, sigmas, compute_type, fft_size, step_size, superres, lock_t, lock_f, crop_f)

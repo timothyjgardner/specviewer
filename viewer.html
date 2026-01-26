@@ -218,7 +218,7 @@
         <div class="control-group">
             <label>Step:</label>
             <button onclick="adjustStep(-64)">−</button>
-            <input type="number" id="stepSize" value="256" min="8" max="1024" step="64" style="width:60px">
+            <input type="number" id="stepSize" value="72" min="8" max="1024" step="64" style="width:60px">
             <button onclick="adjustStep(64)">+</button>
         </div>
         
@@ -239,15 +239,31 @@
         <div class="control-group">
             <label>FL:</label>
             <button onclick="adjustParam('lockF', -5)">−</button>
-            <input type="number" id="lockF" value="15" min="1" max="50" step="5" style="width:45px">
+            <input type="number" id="lockF" value="5" min="1" max="50" step="5" style="width:45px">
             <button onclick="adjustParam('lockF', 5)">+</button>
         </div>
         
         <div class="control-group">
             <label>CropF:</label>
             <button onclick="adjustCropF(-0.1)">−</button>
-            <input type="number" id="cropF" value="0.5" min="0.1" max="1" step="0.1" style="width:50px">
+            <input type="number" id="cropF" value="0.3" min="0.1" max="1" step="0.1" style="width:50px" oninput="render()">
             <button onclick="adjustCropF(0.1)">+</button>
+        </div>
+        
+        <div class="divider"></div>
+        
+        <div class="control-group">
+            <label>Min:</label>
+            <button onclick="adjustThreshold('threshMin', -0.05)">−</button>
+            <input type="number" id="threshMin" value="0.15" min="0" max="1" step="0.05" style="width:50px" oninput="render()">
+            <button onclick="adjustThreshold('threshMin', 0.05)">+</button>
+        </div>
+        
+        <div class="control-group">
+            <label>Max:</label>
+            <button onclick="adjustThreshold('threshMax', -0.05)">−</button>
+            <input type="number" id="threshMax" value="0.85" min="0" max="1" step="0.05" style="width:50px" oninput="render()">
+            <button onclick="adjustThreshold('threshMax', 0.05)">+</button>
         </div>
         
         <div class="divider"></div>
@@ -286,7 +302,7 @@
         }
     </script>
     
-    <!-- Fragment Shader with Max-Pooling -->
+    <!-- Fragment Shader with Max-Pooling and Thresholding -->
     <script id="fragment-shader" type="x-shader/x-fragment">
         precision highp float;
         
@@ -295,12 +311,18 @@
         uniform vec2 u_canvasSize;
         uniform vec2 u_scale;
         uniform vec2 u_pan;
+        uniform float u_threshMin;  // Values below this become 0
+        uniform float u_threshMax;  // Values above this become 1
+        uniform float u_cropF;      // Show only bottom cropF of frequency range
         
         varying vec2 v_position;
         
         void main() {
             vec2 screenPos = v_position * u_canvasSize;
             screenPos.y = u_canvasSize.y - screenPos.y;
+            
+            // Apply frequency cropping - scale effective texture height
+            vec2 effectiveTextureSize = vec2(u_textureSize.x, u_textureSize.y * u_cropF);
             
             vec2 imagePos = screenPos / u_scale + u_pan;
             vec2 pixelsPerScreen = 1.0 / u_scale;
@@ -318,7 +340,10 @@
                     if (float(x) >= fSamplesX) continue;
                     
                     vec2 samplePos = imagePos + vec2(float(x) * stepX, float(y) * stepY);
-                    vec2 uv = samplePos / u_textureSize;
+                    vec2 uv = samplePos / effectiveTextureSize;
+                    
+                    // Map to bottom portion of texture (low frequencies)
+                    uv.y = (1.0 - u_cropF) + uv.y * u_cropF;
                     
                     if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {
                         maxColor = max(maxColor, texture2D(u_image, uv).rgb);
@@ -326,7 +351,14 @@
                 }
             }
             
-            vec2 baseUV = imagePos / u_textureSize;
+            // Apply thresholding: rescale from [threshMin, threshMax] to [0, 1]
+            float range = u_threshMax - u_threshMin;
+            if (range > 0.001) {
+                maxColor = (maxColor - u_threshMin) / range;
+                maxColor = clamp(maxColor, 0.0, 1.0);
+            }
+            
+            vec2 baseUV = imagePos / effectiveTextureSize;
             if (baseUV.x < -0.5 || baseUV.x > 1.5 || baseUV.y < -0.5 || baseUV.y > 1.5) {
                 gl_FragColor = vec4(0.1, 0.1, 0.1, 1.0);
             } else {
@@ -350,7 +382,7 @@
         const SCALE_MAX = 20.0;
         
         let gl, program, texture;
-        let u_textureSize, u_canvasSize, u_scale, u_pan;
+        let u_textureSize, u_canvasSize, u_scale, u_pan, u_threshMin, u_threshMax, u_cropF;
         
         const canvas = document.getElementById('glCanvas');
         const viewer = document.getElementById('viewer');
@@ -416,6 +448,9 @@
             u_canvasSize = gl.getUniformLocation(program, 'u_canvasSize');
             u_scale = gl.getUniformLocation(program, 'u_scale');
             u_pan = gl.getUniformLocation(program, 'u_pan');
+            u_threshMin = gl.getUniformLocation(program, 'u_threshMin');
+            u_threshMax = gl.getUniformLocation(program, 'u_threshMax');
+            u_cropF = gl.getUniformLocation(program, 'u_cropF');
             
             texture = gl.createTexture();
             gl.bindTexture(gl.TEXTURE_2D, texture);
@@ -459,6 +494,15 @@
             let value = parseFloat(input.value) || 0.5;
             value = Math.max(0.1, Math.min(1.0, value + delta));
             input.value = value.toFixed(1);
+            render();  // Real-time update via WebGL
+        }
+        
+        function adjustThreshold(id, delta) {
+            const input = document.getElementById(id);
+            let value = parseFloat(input.value) || 0;
+            value = Math.max(0, Math.min(1, value + delta));
+            input.value = value.toFixed(2);
+            render();  // Real-time update via WebGL
         }
         
         async function loadWavList() {
@@ -502,7 +546,7 @@
             const superres = parseInt(document.getElementById('superres').value) || 1;
             const lockT = parseInt(document.getElementById('lockT').value) || 15;
             const lockF = parseInt(document.getElementById('lockF').value) || 15;
-            const cropF = parseFloat(document.getElementById('cropF').value) || 0.5;
+            // cropF now handled in WebGL, always compute full frequency range
             
             status.textContent = 'Computing...';
             computeBtn.disabled = true;
@@ -520,7 +564,7 @@
                         superres: superres,
                         lock_t: lockT,
                         lock_f: lockF,
-                        crop_f: cropF
+                        crop_f: 1.0  // Always compute full range, WebGL handles cropping
                     })
                 });
                 
@@ -572,6 +616,8 @@
         }
         
         function render() {
+            if (!gl) return;  // Guard if WebGL not initialized
+            
             gl.clearColor(0.1, 0.1, 0.1, 1.0);
             gl.clear(gl.COLOR_BUFFER_BIT);
             
@@ -579,6 +625,16 @@
             gl.uniform2f(u_canvasSize, canvas.width, canvas.height);
             gl.uniform2f(u_scale, scaleX, scaleY);
             gl.uniform2f(u_pan, panX, panY);
+            
+            // Real-time threshold controls
+            const threshMin = parseFloat(document.getElementById('threshMin').value) || 0;
+            const threshMax = parseFloat(document.getElementById('threshMax').value) || 1;
+            gl.uniform1f(u_threshMin, threshMin);
+            gl.uniform1f(u_threshMax, threshMax);
+            
+            // Real-time frequency crop
+            const cropF = parseFloat(document.getElementById('cropF').value) || 0.5;
+            gl.uniform1f(u_cropF, cropF);
             
             gl.drawArrays(gl.TRIANGLES, 0, 6);
         }
@@ -629,9 +685,8 @@
         window.addEventListener('mousemove', (e) => {
             if (!dragging) return;
             const dx = e.clientX - lastX;
-            const dy = e.clientY - lastY;
             panX -= dx / scaleX;
-            panY += dy / scaleY;
+            // panY unchanged - pan only on time axis
             lastX = e.clientX;
             lastY = e.clientY;
             render();
@@ -651,16 +706,12 @@
             
             const rect = canvas.getBoundingClientRect();
             const mx = e.clientX - rect.left;
-            const my = e.clientY - rect.top;
             
             const imgX = mx / scaleX + panX;
-            const imgY = (canvas.height - my) / scaleY + panY;
             
+            // Zoom only time axis (X)
             scaleX = Math.max(SCALE_MIN, Math.min(SCALE_MAX, scaleX * factor));
-            scaleY = Math.max(SCALE_MIN, Math.min(SCALE_MAX, scaleY * factor));
-            
             panX = imgX - mx / scaleX;
-            panY = imgY - (canvas.height - my) / scaleY;
             
             updateDisplay();
             render();
@@ -704,11 +755,13 @@
             document.getElementById('sigma2').value = '2.0';
             document.getElementById('sigma3').value = '3.0';
             document.getElementById('fftSize').value = '1024';
-            document.getElementById('stepSize').value = '256';
+            document.getElementById('stepSize').value = '72';
             document.getElementById('superres').value = '1';
             document.getElementById('lockT').value = '15';
-            document.getElementById('lockF').value = '15';
-            document.getElementById('cropF').value = '0.5';
+            document.getElementById('lockF').value = '5';
+            document.getElementById('cropF').value = '0.3';
+            document.getElementById('threshMin').value = '0.15';
+            document.getElementById('threshMax').value = '0.85';
         }
         
         // WAV select change - reset to defaults

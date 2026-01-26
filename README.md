@@ -55,11 +55,12 @@ Open http://localhost:8000 in your browser.
 - **Superres** - Frequency superresolution factor (1-10, increases frequency detail)
 - **TL** - Temporal locking window (controls stray point removal in time)
 - **FL** - Frequency locking window (controls stray point removal in frequency)
-- **CropF** - Frequency crop factor (0.1-1.0, fraction of spectrum to show from low end)
+- **CropF** - Frequency crop factor (0.1-1.0, real-time WebGL control)
+- **Min/Max** - Intensity thresholds for display contrast (real-time WebGL control)
 - **Compute** - Recompute with current settings (or press Enter)
 - **X/Y zoom** - Independent time and frequency zoom in viewer
-- **Mouse drag** - Pan around the image
-- **Mouse wheel** - Zoom both axes at cursor position
+- **Mouse drag** - Pan along time axis
+- **Mouse wheel** - Zoom time axis at cursor position
 - **W/S keys** - Frequency (Y) zoom in/out
 - **A/D keys** - Time (X) zoom in/out
 - **R key** - Reset view to fit image
@@ -97,7 +98,7 @@ The FFT window size controls the frequency resolution:
 - **Larger (2048, 4096)** - Better frequency resolution, smoother in time
 
 ### Step Size
-The number of samples between successive windows. `overlap = fft_size - step_size`.
+The number of samples between successive windows (default: 72). `overlap = fft_size - step_size`.
 - **Smaller step** - More overlap, sharper lines, but wider images and slower computation
 - **Larger step** - Less overlap, faster computation, narrower images
 
@@ -107,15 +108,24 @@ Frequency superresolution factor (1-10). Increases the number of frequency bins 
 ### Locking Windows (TL, FL)
 Control the removal of "stray points" in the reassigned spectrogram:
 - **TL (Temporal Locking)** - Maximum allowed displacement in time (default: 15)
-- **FL (Frequency Locking)** - Maximum allowed displacement in frequency (default: 15)
+- **FL (Frequency Locking)** - Maximum allowed displacement in frequency (default: 5)
 - **Smaller values** - Sharper lines but may introduce gaps
 - **Larger values** - Preserves more signal but may be noisier
 
 ### CropF (Frequency Crop)
 Controls what fraction of the frequency spectrum to display (0.1-1.0):
-- **0.5** (default) - Show bottom half of frequency range
+- **0.3** (default) - Show bottom 30% of frequency range
 - **1.0** - Show full frequency spectrum
-- **0.25** - Show only bottom quarter (lowest frequencies)
+- **0.5** - Show bottom half (lower frequencies)
+
+This is a real-time WebGL control - adjust instantly without recomputing.
+
+### Min/Max (Intensity Thresholds)
+Real-time display controls for adjusting contrast:
+- **Min** (default 0.15) - Values below this threshold become black
+- **Max** (default 0.85) - Values above this threshold become maximum intensity
+
+Colors are rescaled between these thresholds, allowing interactive adjustment of dynamic range without recomputing the spectrogram.
 
 ## WebGL Max-Pooling
 
