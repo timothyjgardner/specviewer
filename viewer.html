@@ -589,10 +589,9 @@
                 return;
             }
             
-            // Stop any currently playing audio
+            // If already playing, ignore
             if (currentSource) {
-                currentSource.stop();
-                currentSource = null;
+                return;
             }
             
             // Resume audio context if suspended (browser autoplay policy)
@@ -626,10 +625,12 @@
             currentSource.connect(audioContext.destination);
             currentSource.start(0, startTime, duration);
             
+            document.getElementById('playBtn').disabled = true;
             status.textContent = `Playing ${startTime.toFixed(2)}s - ${endTime.toFixed(2)}s`;
             
             currentSource.onended = () => {
                 currentSource = null;
+                document.getElementById('playBtn').disabled = false;
                 status.textContent = `${imageWidth}×${imageHeight}  σ=[${document.getElementById('sigma1').value},${document.getElementById('sigma2').value},${document.getElementById('sigma3').value}]`;
             };
         }
@@ -638,6 +639,7 @@
             if (currentSource) {
                 currentSource.stop();
                 currentSource = null;
+                document.getElementById('playBtn').disabled = false;
                 status.textContent = `${imageWidth}×${imageHeight}  σ=[${document.getElementById('sigma1').value},${document.getElementById('sigma2').value},${document.getElementById('sigma3').value}]`;
             }
         }
