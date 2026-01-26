@@ -20,7 +20,7 @@ This visualizer computes the spectrogram at multiple timescales (sigma values) a
 
 2. Install dependencies:
    ```bash
-   pip install numpy scipy matplotlib pillow flask
+   pip install -r requirements.txt
    ```
 
 ## Files
@@ -28,6 +28,7 @@ This visualizer computes the spectrogram at multiple timescales (sigma values) a
 - **ifdv.py** - Core algorithm for computing reassigned spectrograms
 - **server.py** - Flask server for interactive viewing with on-demand computation
 - **viewer.html** - WebGL-based viewer with max-pooling for large images
+- **requirements.txt** - Python dependencies
 
 ## Usage
 
@@ -134,7 +135,7 @@ The viewer uses a WebGL shader that performs max-pooling when zoomed out. This m
 
 ## Limitations
 
-- WebGL has a maximum texture size (typically 16384 pixels). Very long recordings are automatically truncated to the first half.
+- WebGL has a maximum texture size (typically 16384 pixels). Very long recordings are automatically truncated to fit within this limit based on the step size.
 - The interactive viewer requires a local server due to browser security restrictions on loading local files into WebGL.
 
 ## References
