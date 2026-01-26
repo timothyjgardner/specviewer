@@ -770,8 +770,10 @@
         }
         
         function resetView() {
+            const cropF = parseFloat(document.getElementById('cropF').value) || 0.4;
+            const effectiveHeight = imageHeight * cropF;
             scaleX = canvas.width / imageWidth;
-            scaleY = canvas.height / imageHeight;
+            scaleY = canvas.height / effectiveHeight;
             panX = 0;
             panY = 0;
             updateDisplay();
