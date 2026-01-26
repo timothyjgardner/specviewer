@@ -7,7 +7,7 @@ A Python-based tool for computing and visualizing reassigned spectrograms with a
 
 ## What is a Reassigned Spectrogram?
 
-Standard spectrograms suffer from a tradeoff between time and frequency resolution. Reassigned spectrograms (also called "remapped sonograms" or "ifdgrams") use the phase information to sharpen the representation, producing cleaner spectral lines without sacrificing resolution.
+Standard spectrograms suffer from a tradeoff between time and frequency resolution. Reassigned spectrograms (also called "remapped sonograms") use the phase information to sharpen the representation, producing cleaner spectral lines without sacrificing resolution.
 This visualizer computes the spectrogram at multiple timescales (sigma values) and combines them. This implementation displays three timescales as RGB channels, allowing you to see which features are consistent across scales.
 
 ## Installation
@@ -26,7 +26,6 @@ This visualizer computes the spectrogram at multiple timescales (sigma values) a
 ## Files
 
 - **ifdv.py** - Core algorithm for computing reassigned spectrograms
-- **process_wavs.py** - Batch processing script to generate PNG images from WAV files
 - **server.py** - Flask server for interactive viewing with on-demand computation
 - **viewer.html** - WebGL-based viewer with max-pooling for large images
 
@@ -68,16 +67,6 @@ Open http://localhost:8000 in your browser.
 - **R key** - Reset view to fit image
 
 **Caching:** Computed spectrograms are cached on the server. Switching between files or toggling ifdgram/sonogram with the same parameters is instant after the first computation.
-
-### Batch Processing
-
-To generate static PNG images for all WAV files in the directory:
-```bash
-source venv/bin/activate
-python process_wavs.py
-```
-
-This creates `*_ifdgram.png` and `*_sonogram.png` files for each WAV file.
 
 ## Parameters
 
