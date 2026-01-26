@@ -143,8 +143,11 @@ def static_files(filename):
 def list_wavfiles():
     """Return list of available WAV files."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    wav_files = glob.glob(os.path.join(script_dir, "*.wav"))
-    wav_names = [os.path.basename(f) for f in sorted(wav_files)]
+    # Search for both .wav and .WAV extensions
+    wav_files = glob.glob(os.path.join(script_dir, "*.wav")) + glob.glob(os.path.join(script_dir, "*.WAV"))
+    wav_names = [os.path.basename(f) for f in sorted(set(wav_files))]
+    print(f"Looking for WAV files in: {script_dir}")
+    print(f"Found: {wav_names}")
     return jsonify(wav_names)
 
 
@@ -221,6 +224,12 @@ def compute():
 
 
 if __name__ == '__main__':
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    wav_files = glob.glob(os.path.join(script_dir, "*.wav")) + glob.glob(os.path.join(script_dir, "*.WAV"))
+    wav_names = [os.path.basename(f) for f in sorted(set(wav_files))]
+    
     print("Starting spectrogram server at http://localhost:8000")
+    print(f"Working directory: {script_dir}")
+    print(f"WAV files found: {wav_names if wav_names else 'NONE - add .wav files to this folder'}")
     print("Open http://localhost:8000 in your browser")
     app.run(host='0.0.0.0', port=8000, debug=False, threaded=True)

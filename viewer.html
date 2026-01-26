@@ -553,7 +553,11 @@
                 });
                 
                 if (wavFiles.length > 0) {
-                    currentWav = wavFiles[0];
+                    // Prefer canary.wav, otherwise use first file
+                    const defaultWav = wavFiles.includes('canary.wav') ? 'canary.wav' : wavFiles[0];
+                    wavSelect.value = defaultWav;
+                    currentWav = defaultWav;
+                    loadAudio(defaultWav);
                     recompute();
                 }
             } catch (e) {
