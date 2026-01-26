@@ -302,6 +302,9 @@
         
         <button onclick="resetView()">Reset</button>
         
+        <button id="playBtn" onclick="playVisible()">▶ Play</button>
+        <button id="stopBtn" onclick="stopAudio()">■ Stop</button>
+        
         <span class="status" id="status">Loading...</span>
     </div>
     
@@ -398,6 +401,12 @@
         
         const SCALE_MIN = 0.02;
         const SCALE_MAX = 20.0;
+        
+        // Audio playback
+        let audioContext = null;
+        let audioBuffer = null;
+        let currentSource = null;
+        let audioSampleRate = 44100;  // Will be updated when audio loads
         
         let gl, program, texture;
         let u_textureSize, u_canvasSize, u_scale, u_pan, u_threshMin, u_threshMax, u_cropF;
@@ -550,6 +559,82 @@
             } catch (e) {
                 status.textContent = 'Failed to load WAV list';
                 console.error(e);
+            }
+        }
+        
+        async function loadAudio(wavName) {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            
+            try {
+                const response = await fetch('/' + wavName);
+                const arrayBuffer = await response.arrayBuffer();
+                audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                audioSampleRate = audioBuffer.sampleRate;
+                console.log(`Audio loaded: ${audioBuffer.duration.toFixed(2)}s, ${audioSampleRate}Hz`);
+            } catch (e) {
+                console.error('Failed to load audio:', e);
+                audioBuffer = null;
+            }
+        }
+        
+        function playVisible() {
+            if (!audioBuffer) {
+                status.textContent = 'Audio not loaded';
+                return;
+            }
+            
+            // Stop any currently playing audio
+            if (currentSource) {
+                currentSource.stop();
+                currentSource = null;
+            }
+            
+            // Resume audio context if suspended (browser autoplay policy)
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            
+            // Calculate visible time range based on pan and zoom
+            const stepSize = parseInt(document.getElementById('stepSize').value) || 72;
+            const totalDuration = audioBuffer.duration;
+            const samplesPerSlice = stepSize;
+            const sliceDuration = samplesPerSlice / audioSampleRate;
+            
+            // Visible region in image pixels
+            const visibleLeft = panX;
+            const visibleRight = panX + canvas.width / scaleX;
+            
+            // Convert to time
+            const startTime = Math.max(0, visibleLeft * sliceDuration);
+            const endTime = Math.min(totalDuration, visibleRight * sliceDuration);
+            const duration = endTime - startTime;
+            
+            if (duration <= 0) {
+                status.textContent = 'No visible audio';
+                return;
+            }
+            
+            // Play the segment
+            currentSource = audioContext.createBufferSource();
+            currentSource.buffer = audioBuffer;
+            currentSource.connect(audioContext.destination);
+            currentSource.start(0, startTime, duration);
+            
+            status.textContent = `Playing ${startTime.toFixed(2)}s - ${endTime.toFixed(2)}s`;
+            
+            currentSource.onended = () => {
+                currentSource = null;
+                status.textContent = `${imageWidth}×${imageHeight}  σ=[${document.getElementById('sigma1').value},${document.getElementById('sigma2').value},${document.getElementById('sigma3').value}]`;
+            };
+        }
+        
+        function stopAudio() {
+            if (currentSource) {
+                currentSource.stop();
+                currentSource = null;
+                status.textContent = `${imageWidth}×${imageHeight}  σ=[${document.getElementById('sigma1').value},${document.getElementById('sigma2').value},${document.getElementById('sigma3').value}]`;
             }
         }
         
@@ -792,9 +877,10 @@
             document.getElementById('threshMax').value = '0.80';
         }
         
-        // WAV select change - reset to defaults
+        // WAV select change - reset to defaults and load audio
         wavSelect.addEventListener('change', () => {
             resetParams();
+            loadAudio(wavSelect.value);
             recompute();
         });
         
@@ -806,6 +892,11 @@
             window.addEventListener('resize', resizeCanvas);
             
             await loadWavList();
+            
+            // Load audio for initial WAV file
+            if (wavSelect.value) {
+                loadAudio(wavSelect.value);
+            }
         }
         
         init();

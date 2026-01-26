@@ -66,6 +66,10 @@ Open http://localhost:8000 in your browser.
 - **A/D keys** - Time (X) zoom in/out
 - **R key** - Reset view to fit image
 
+*Audio Playback:*
+- **Play** - Play the audio for the currently visible time range
+- **Stop** - Stop audio playback
+
 **Caching:** Computed spectrograms are cached on the server. Switching between files or toggling ifdgram/sonogram with the same parameters is instant after the first computation.
 
 ## Parameters
