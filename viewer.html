@@ -304,6 +304,7 @@
         
         <button id="playBtn" onclick="playVisible()">▶ Play</button>
         <button id="stopBtn" onclick="stopAudio()">■ Stop</button>
+        <button onclick="saveScreenshot()">💾 Save</button>
         
         <span class="status" id="status">Loading...</span>
     </div>
@@ -642,6 +643,94 @@
                 document.getElementById('playBtn').disabled = false;
                 status.textContent = `${imageWidth}×${imageHeight}  σ=[${document.getElementById('sigma1').value},${document.getElementById('sigma2').value},${document.getElementById('sigma3').value}]`;
             }
+        }
+        
+        function saveScreenshot() {
+            // Calculate visible time range
+            const stepSize = parseInt(document.getElementById('stepSize').value) || 72;
+            const fftSize = parseInt(document.getElementById('fftSize').value) || 1024;
+            const cropF = parseFloat(document.getElementById('cropF').value) || 0.4;
+            const sliceDuration = stepSize / audioSampleRate;
+            
+            const visibleLeft = panX;
+            const visibleRight = panX + canvas.width / scaleX;
+            const startTime = Math.max(0, visibleLeft * sliceDuration);
+            const endTime = visibleRight * sliceDuration;
+            const visibleDuration = endTime - startTime;
+            
+            // Calculate visible frequency range (0 to Nyquist * cropF)
+            const nyquist = audioSampleRate / 2;
+            const maxFreq = nyquist * cropF;
+            
+            // Create a composite canvas with scale bar
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+            const ctx = tempCanvas.getContext('2d');
+            
+            // Draw the WebGL canvas content
+            ctx.drawImage(canvas, 0, 0);
+            
+            // Scale bar dimensions: 1/10 width (time), 1/4 height (frequency)
+            const scaleBarWidth = canvas.width / 10;
+            const scaleBarHeight = canvas.height / 4;
+            
+            // Scale bar values
+            const timeBarValue = visibleDuration / 10;  // seconds
+            const freqBarValue = maxFreq / 4;  // Hz
+            
+            // Position in bottom-left corner with padding
+            const padding = 20;
+            const barX = padding;
+            const barY = canvas.height - padding;
+            
+            // Draw L-shaped scale bar
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            // Horizontal line (time)
+            ctx.moveTo(barX, barY);
+            ctx.lineTo(barX + scaleBarWidth, barY);
+            // Vertical line (frequency)
+            ctx.moveTo(barX, barY);
+            ctx.lineTo(barX, barY - scaleBarHeight);
+            ctx.stroke();
+            
+            // Add black outline for visibility
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(barX, barY);
+            ctx.lineTo(barX + scaleBarWidth, barY);
+            ctx.moveTo(barX, barY);
+            ctx.lineTo(barX, barY - scaleBarHeight);
+            ctx.stroke();
+            
+            // Add labels
+            ctx.fillStyle = 'white';
+            ctx.font = '12px sans-serif';
+            ctx.textAlign = 'center';
+            // Time label below horizontal bar
+            const timeLabel = timeBarValue >= 1 ? `${timeBarValue.toFixed(1)}s` : `${(timeBarValue * 1000).toFixed(0)}ms`;
+            ctx.fillText(timeLabel, barX + scaleBarWidth / 2, barY + 15);
+            // Frequency label beside vertical bar
+            ctx.textAlign = 'left';
+            const freqLabel = freqBarValue >= 1000 ? `${(freqBarValue / 1000).toFixed(1)}kHz` : `${Math.round(freqBarValue)}Hz`;
+            ctx.fillText(freqLabel, barX + 5, barY - scaleBarHeight / 2);
+            
+            // Build filename with time and frequency info
+            const wavName = currentWav.replace('.wav', '').replace('.WAV', '');
+            const timeStr = `${startTime.toFixed(2)}-${endTime.toFixed(2)}s`;
+            const freqStr = `0-${Math.round(maxFreq)}Hz`;
+            const filename = `${wavName}_${timeStr}_${freqStr}.png`;
+            
+            // Create download link
+            const link = document.createElement('a');
+            link.download = filename;
+            link.href = tempCanvas.toDataURL('image/png');
+            link.click();
+            
+            status.textContent = `Saved: ${filename}`;
         }
         
         async function recompute(shouldResetView = true) {
