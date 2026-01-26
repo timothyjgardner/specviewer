@@ -9,12 +9,11 @@ __pycache__/
 *.wav
 !canary.wav
 
-# Generated images (except canary examples)
+# Generated images (except screenshot)
 *_ifdgram.png
 *_sonogram.png
 ifdv_example.png
-!canary_sono.png
-!canary_ifd.png
+!screenshot.png
 
 # macOS
 .DS_Store

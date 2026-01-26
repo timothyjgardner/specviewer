@@ -2,11 +2,8 @@
 
 A Python-based tool for computing and visualizing reassigned spectrograms (ifdgrams) with an interactive WebGL viewer. Based on the algorithm described in Gardner & Magnasco, PNAS 2006.
 
-![Canary song spectrogram](canary_sono.png)
-*Multi-timescale spectrogram of canary song.*
-
-![Canary song reassigned spectrogram](canary_ifd.png)
-*Reassigned spectrogram (ifdgram) of the same canary song. RGB channels represent σ = 1ms (red), 2ms (green), 3ms (blue).*
+![Spectrogram Viewer](screenshot.png)
+*Interactive spectrogram viewer with reassigned spectrogram (ifdgram) display.*
 
 ## What is a Reassigned Spectrogram?
 
