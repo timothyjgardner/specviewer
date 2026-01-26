@@ -1,6 +1,6 @@
-# IFDV - Interactive Reassigned Spectrogram Viewer
+# Interactive Reassigned Spectrogram Viewer
 
-A Python-based tool for computing and visualizing reassigned spectrograms (ifdgrams) with an interactive WebGL viewer. Based on the algorithm described in Gardner & Magnasco, PNAS 2006.
+A Python-based tool for computing and visualizing reassigned spectrograms with an interactive WebGL viewer. Based on the algorithm described in Gardner & Magnasco, PNAS 2006.
 
 ![Spectrogram Viewer](screenshot.png)
 *Interactive spectrogram viewer with reassigned spectrogram (ifdgram) display.*
@@ -8,8 +8,7 @@ A Python-based tool for computing and visualizing reassigned spectrograms (ifdgr
 ## What is a Reassigned Spectrogram?
 
 Standard spectrograms suffer from a tradeoff between time and frequency resolution. Reassigned spectrograms (also called "remapped sonograms" or "ifdgrams") use the phase information to sharpen the representation, producing cleaner spectral lines without sacrificing resolution.
-
-The key insight is computing the spectrogram at multiple timescales (sigma values) and combining them. This implementation displays three timescales as RGB channels, allowing you to see which features are consistent across scales.
+This visualizer computes the spectrogram at multiple timescales (sigma values) and combines them. This implementation displays three timescales as RGB channels, allowing you to see which features are consistent across scales.
 
 ## Installation
 
@@ -44,18 +43,24 @@ python server.py
 Open http://localhost:8000 in your browser.
 
 **Controls:**
+
+*Compute Parameters (require recomputation via Compute button):*
 - **WAV selector** - Choose which audio file to analyze (parameters reset to defaults when switching)
 - **ifdgram/sonogram** - Toggle between reassigned and standard spectrogram
-- **σ (ms)** - Three sigma values for R, G, B channels (use +/- buttons or type values)
+- **σ (ms)** - Three sigma values for R, G, B channels
 - **FFT** - FFT window size (256, 512, 1024, 2048, 4096)
-- **Step** - Samples between windows (smaller = more overlap = higher time resolution but wider images)
-- **Superres** - Frequency superresolution factor (1-10, increases frequency detail)
-- **TL** - Temporal locking window (controls stray point removal in time)
-- **FL** - Frequency locking window (controls stray point removal in frequency)
-- **CropF** - Frequency crop factor (0.1-1.0, real-time WebGL control)
-- **Min/Max** - Intensity thresholds for display contrast (real-time WebGL control)
-- **Compute** - Recompute with current settings (or press Enter)
-- **X/Y zoom** - Independent time and frequency zoom in viewer
+- **Step** - Samples between windows (smaller = higher time resolution)
+- **Superres** - Frequency superresolution factor (1-10)
+- **TL** - Temporal locking window (stray point removal in time)
+- **FL** - Frequency locking window (stray point removal in frequency)
+- **LogOff** - Log scale offset for `log(amp + offset)` contrast
+
+*Display Parameters (real-time WebGL, no recomputation needed):*
+- **CropF** - Frequency crop factor (0.1-1.0, show low frequencies)
+- **Min/Max** - Intensity thresholds for display contrast
+- **X/Y zoom** - Independent time and frequency zoom
+
+*Navigation:*
 - **Mouse drag** - Pan along time axis
 - **Mouse wheel** - Zoom time axis at cursor position
 - **W/S keys** - Frequency (Y) zoom in/out
@@ -104,14 +109,14 @@ Frequency superresolution factor (1-10). Increases the number of frequency bins 
 
 ### Locking Windows (TL, FL)
 Control the removal of "stray points" in the reassigned spectrogram:
-- **TL (Temporal Locking)** - Maximum allowed displacement in time (default: 15)
+- **TL (Temporal Locking)** - Maximum allowed displacement in time (default: 5)
 - **FL (Frequency Locking)** - Maximum allowed displacement in frequency (default: 5)
 - **Smaller values** - Sharper lines but may introduce gaps
 - **Larger values** - Preserves more signal but may be noisier
 
 ### CropF (Frequency Crop)
 Controls what fraction of the frequency spectrum to display (0.1-1.0):
-- **0.3** (default) - Show bottom 30% of frequency range
+- **0.4** (default) - Show bottom 40% of frequency range
 - **1.0** - Show full frequency spectrum
 - **0.5** - Show bottom half (lower frequencies)
 
@@ -119,10 +124,16 @@ This is a real-time WebGL control - adjust instantly without recomputing.
 
 ### Min/Max (Intensity Thresholds)
 Real-time display controls for adjusting contrast:
-- **Min** (default 0.15) - Values below this threshold become black
-- **Max** (default 0.85) - Values above this threshold become maximum intensity
+- **Min** (default 0.05) - Values below this threshold become black
+- **Max** (default 0.80) - Values above this threshold become maximum intensity
 
 Colors are rescaled between these thresholds, allowing interactive adjustment of dynamic range without recomputing the spectrogram.
+
+### LogOff (Log Offset)
+Controls the offset in the log scale transformation `log(amp + offset)`:
+- **Lower values (0.01-0.1)** - More contrast for weak signals
+- **Higher values (0.5-1.0)** - Compressed dynamic range
+- Default: 0.3
 
 ## WebGL Max-Pooling
 
