@@ -143,5 +143,4 @@ The viewer uses a WebGL shader that performs max-pooling when zoomed out. This m
 
 ## References
 
-- Gardner, T. J., & Magnasco, M. O. (2006). Efficient and robust spectro-temporal analysis using sparse signal reconstruction. *PNAS*, 103(16), 6094-6099.
-- Gardner, T. J., & Magnasco, M. O. (2005). Sparse time-frequency representations. *J. Acoust. Soc. Am.*, 118(3), 2095-2104.
+- Gardner, T. J., & Magnasco, M. O. (2006). Sparse time-frequency representations. *Proceedings of the National Academy of Sciences*, 103(16), 6094-6099.
