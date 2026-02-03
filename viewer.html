@@ -185,6 +185,8 @@
         <div class="type-toggle">
             <button id="btnIfdgram" class="active" onclick="setType('ifdgram')">ifdgram</button>
             <button id="btnSonogram" onclick="setType('sonogram')">sonogram</button>
+            <button id="btnZeros" onclick="setType('zeros')">zeros</button>
+            <button id="btnCombined" onclick="setType('combined')">combined</button>
         </div>
         
         <div class="divider"></div>
@@ -227,7 +229,7 @@
         <div class="control-group">
             <label>Step:</label>
             <button onclick="adjustStep(-64)">−</button>
-            <input type="number" id="stepSize" value="72" min="8" max="1024" step="64" style="width:70px">
+            <input type="number" id="stepSize" value="72" min="1" max="1024" step="1" style="width:70px">
             <button onclick="adjustStep(64)">+</button>
         </div>
         
@@ -491,6 +493,8 @@
             currentType = type;
             document.getElementById('btnIfdgram').classList.toggle('active', type === 'ifdgram');
             document.getElementById('btnSonogram').classList.toggle('active', type === 'sonogram');
+            document.getElementById('btnZeros').classList.toggle('active', type === 'zeros');
+            document.getElementById('btnCombined').classList.toggle('active', type === 'combined');
             recompute(false);  // Don't reset view when switching type
         }
         

@@ -94,27 +94,102 @@ def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024,
         ifdgram, sonogram, dx = ifdv(data, sampling_rate, n, overlap, sigma, zoom_t, zoom_f, tl, fl)
         if compute_type == 'ifdgram':
             results.append(ifdgram)
+        elif compute_type == 'zeros' or compute_type == 'combined':
+            # Inverse magnitude - zeros become bright
+            mag = np.abs(sonogram)
+            inv_mag = 1.0 / (mag + 1e-10)  # Avoid division by zero
+            # Take only lower half of inv_mag (positive frequencies)
+            inv_mag = inv_mag[:n//2, :]
+            # Resize inv_mag to match ifdgram dimensions (which is scaled by zoom_f)
+            if inv_mag.shape != ifdgram.shape:
+                from scipy.ndimage import zoom as scipy_zoom
+                scale_f = ifdgram.shape[0] / inv_mag.shape[0]
+                scale_t = ifdgram.shape[1] / inv_mag.shape[1]
+                inv_mag = scipy_zoom(inv_mag, (scale_f, scale_t), order=1)
+            results.append((inv_mag, ifdgram))  # Store both for combined view
         else:
             results.append(np.abs(sonogram))
     
     # Crop to show only low frequency portion (crop_f=0.5 means bottom half, crop_f=1.0 means full)
-    freq_bins = results[0].shape[0]
-    keep_bins = int(freq_bins * crop_f)
-    crop_start = freq_bins - keep_bins  # Start from high freq, keep low freq portion
-    results = [img[crop_start:] for img in results]
+    if compute_type in ['zeros', 'combined']:
+        # Results are tuples of (inv_mag, ifdgram)
+        first_item = results[0][0]
+        freq_bins = first_item.shape[0]
+        keep_bins = int(freq_bins * crop_f)
+        crop_start = freq_bins - keep_bins
+        results = [(inv[crop_start:], ifd[crop_start:]) for inv, ifd in results]
+    else:
+        freq_bins = results[0].shape[0]
+        keep_bins = int(freq_bins * crop_f)
+        crop_start = freq_bins - keep_bins
+        results = [img[crop_start:] for img in results]
     
-    # Normalize each channel with log transform
-    def normalize(img, offset):
-        img = np.log(img + offset)
-        img_min = img.min()
-        img_max = img.max()
-        if img_max > img_min:
-            return (img - img_min) / (img_max - img_min)
-        return np.zeros_like(img)
+    if compute_type == 'zeros':
+        # For zeros view: use single channel with black→blue→cyan/white colormap
+        # Use first sigma only for cleaner zeros pattern
+        inv_mag, _ = results[0]
+        
+        # Clamp max inverse value to avoid blowing up at true zeros/padding
+        max_inv = np.median(inv_mag) * 10  # Cap at 10x median
+        zeros_norm = np.clip(inv_mag, 0, max_inv)
+        
+        # Log scale for better dynamic range
+        zeros_norm = np.log(zeros_norm + 1)
+        zeros_norm = zeros_norm / (zeros_norm.max() + 1e-10)
+        
+        # Apply black→blue→cyan→white colormap
+        r = np.power(zeros_norm, 2.0) * 255
+        g = np.power(zeros_norm, 1.2) * 255
+        b = np.power(zeros_norm, 0.5) * 255
+        
+        rgb_uint8 = np.stack([r, g, b], axis=-1).astype(np.uint8)
     
-    channels = [normalize(img, log_offset) for img in results]
-    rgb = np.stack(channels, axis=-1)
-    rgb_uint8 = (rgb * 255).astype(np.uint8)
+    elif compute_type == 'combined':
+        # Combined view: zeros (blue) + ifdgram (orange/hot)
+        inv_mag, ifdgram_data = results[0]
+        
+        # Process zeros - black→blue→cyan
+        max_inv = np.median(inv_mag) * 10
+        zeros_norm = np.clip(inv_mag, 0, max_inv)
+        zeros_norm = np.log(zeros_norm + 1)
+        zeros_norm = zeros_norm / (zeros_norm.max() + 1e-10)
+        
+        # Process ifdgram - normalize with log
+        ifd_norm = np.log(ifdgram_data + log_offset)
+        ifd_norm = (ifd_norm - ifd_norm.min()) / (ifd_norm.max() - ifd_norm.min() + 1e-10)
+        
+        # Zeros: contributes to blue/cyan
+        # Ifdgram: contributes to red/orange (hot colormap)
+        
+        # Hot colormap for ifdgram: black→red→orange→yellow
+        ifd_r = np.clip(ifd_norm * 3, 0, 1) * 255
+        ifd_g = np.clip(ifd_norm * 3 - 1, 0, 1) * 255
+        ifd_b = np.zeros_like(ifd_norm)
+        
+        # Zeros colormap: black→blue→cyan
+        zeros_r = np.power(zeros_norm, 2.0) * 100  # Reduced contribution
+        zeros_g = np.power(zeros_norm, 1.2) * 150
+        zeros_b = np.power(zeros_norm, 0.5) * 255
+        
+        # Combine: add the two
+        r = np.clip(ifd_r + zeros_r, 0, 255)
+        g = np.clip(ifd_g + zeros_g, 0, 255)
+        b = np.clip(ifd_b + zeros_b, 0, 255)
+        
+        rgb_uint8 = np.stack([r, g, b], axis=-1).astype(np.uint8)
+    else:
+        # Normalize each channel with log transform
+        def normalize(img, offset):
+            img = np.log(img + offset)
+            img_min = img.min()
+            img_max = img.max()
+            if img_max > img_min:
+                return (img - img_min) / (img_max - img_min)
+            return np.zeros_like(img)
+        
+        channels = [normalize(img, log_offset) for img in results]
+        rgb = np.stack(channels, axis=-1)
+        rgb_uint8 = (rgb * 255).astype(np.uint8)
     
     # Convert to base64 PNG
     img = Image.fromarray(rgb_uint8)
@@ -184,8 +259,8 @@ def compute():
         step_size = int(step_size)
         if fft_size not in [256, 512, 1024, 2048, 4096]:
             return jsonify({'error': 'FFT size must be 256, 512, 1024, 2048, or 4096'}), 400
-        if step_size < 8 or step_size > fft_size:
-            return jsonify({'error': f'Step size must be between 8 and {fft_size}'}), 400
+        if step_size < 1 or step_size > fft_size:
+            return jsonify({'error': f'Step size must be between 1 and {fft_size}'}), 400
     except (ValueError, TypeError):
         return jsonify({'error': 'Invalid FFT or step size'}), 400
     
