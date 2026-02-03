@@ -91,7 +91,7 @@ def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024,
     # Compute for each sigma
     results = []
     for sigma in sigmas:
-        ifdgram, sonogram, dx = ifdv(data, sampling_rate, n, overlap, sigma, zoom_t, zoom_f, tl, fl)
+        ifdgram, sonogram, dx, t_disp, f_disp = ifdv(data, sampling_rate, n, overlap, sigma, zoom_t, zoom_f, tl, fl)
         if compute_type == 'ifdgram':
             results.append(ifdgram)
         elif compute_type == 'zeros' or compute_type == 'combined':
@@ -107,6 +107,19 @@ def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024,
                 scale_t = ifdgram.shape[1] / inv_mag.shape[1]
                 inv_mag = scipy_zoom(inv_mag, (scale_f, scale_t), order=1)
             results.append((inv_mag, ifdgram))  # Store both for combined view
+        elif compute_type == 'crossings' or compute_type == 'ridges':
+            # Binary detection: mark where both |t_disp| and |f_disp| are small
+            # Take only lower half (positive frequencies)
+            t_d = t_disp[:n//2, :]
+            f_d = f_disp[:n//2, :]
+            # Resize to match ifdgram dimensions
+            if t_d.shape != ifdgram.shape:
+                from scipy.ndimage import zoom as scipy_zoom
+                scale_f = ifdgram.shape[0] / t_d.shape[0]
+                scale_t = ifdgram.shape[1] / t_d.shape[1]
+                t_d = scipy_zoom(t_d, (scale_f, scale_t), order=1)
+                f_d = scipy_zoom(f_d, (scale_f, scale_t), order=1)
+            results.append((t_d, f_d, ifdgram))
         else:
             # Sonogram view - resample to match ifdgram dimensions for alignment
             sono_mag = np.abs(sonogram)
@@ -126,6 +139,13 @@ def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024,
         keep_bins = int(freq_bins * crop_f)
         crop_start = freq_bins - keep_bins
         results = [(inv[crop_start:], ifd[crop_start:]) for inv, ifd in results]
+    elif compute_type in ['crossings', 'ridges']:
+        # Results are tuples of (t_disp, f_disp, ifdgram)
+        first_item = results[0][0]
+        freq_bins = first_item.shape[0]
+        keep_bins = int(freq_bins * crop_f)
+        crop_start = freq_bins - keep_bins
+        results = [(t[crop_start:], f[crop_start:], ifd[crop_start:]) for t, f, ifd in results]
     else:
         freq_bins = results[0].shape[0]
         keep_bins = int(freq_bins * crop_f)
@@ -173,6 +193,257 @@ def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024,
         b = np.zeros_like(r)
         
         rgb_uint8 = np.stack([r, g, b], axis=-1)
+    
+    elif compute_type == 'crossings':
+        # Contour-based detection: plot isolines where t_disp=0 and f_disp=0
+        import matplotlib
+        matplotlib.use('Agg')  # Use non-GUI backend
+        import matplotlib.pyplot as plt
+        from matplotlib.figure import Figure
+        from matplotlib.backends.backend_agg import FigureCanvasAgg
+        
+        t_d, f_d, ifdgram_data = results[0]
+        
+        # Create figure with exact pixel dimensions
+        h, w = t_d.shape
+        dpi = 100
+        fig = Figure(figsize=(w/dpi, h/dpi), dpi=dpi)
+        canvas = FigureCanvasAgg(fig)
+        ax = fig.add_axes([0, 0, 1, 1])
+        ax.set_xlim(0, w)
+        ax.set_ylim(0, h)
+        ax.set_axis_off()
+        
+        # Normalize ifdgram for background
+        ifd_norm = np.log(ifdgram_data + 0.3)
+        ifd_norm = (ifd_norm - ifd_norm.min()) / (ifd_norm.max() - ifd_norm.min() + 1e-10)
+        
+        # Show dim ifdgram as background
+        ax.imshow(ifd_norm, cmap='gray', vmin=0, vmax=4, aspect='auto', origin='upper', extent=[0, w, 0, h])
+        
+        # Draw contours at t_disp = 0 (red)
+        ax.contour(t_d, levels=[0], colors=['red'], linewidths=0.5, origin='upper', extent=[0, w, 0, h])
+        
+        # Draw contours at f_disp = 0 (blue)  
+        ax.contour(f_d, levels=[0], colors=['blue'], linewidths=0.5, origin='upper', extent=[0, w, 0, h])
+        
+        # Sign change detection: find 2x2 blocks where both t_d and f_d cross zero
+        # Check diagonal sign changes in 2x2 blocks
+        t_sign_change = ((t_d[:-1,:-1] * t_d[1:,1:] < 0) | (t_d[:-1,1:] * t_d[1:,:-1] < 0))
+        f_sign_change = ((f_d[:-1,:-1] * f_d[1:,1:] < 0) | (f_d[:-1,1:] * f_d[1:,:-1] < 0))
+        zeros_mask = t_sign_change & f_sign_change
+        
+        # Compute Jacobian determinant to filter true singularities
+        # det(J) = ∂t_d/∂x * ∂f_d/∂y - ∂t_d/∂y * ∂f_d/∂x
+        dt_dx = np.diff(t_d, axis=1)  # ∂t_d/∂x
+        dt_dy = np.diff(t_d, axis=0)  # ∂t_d/∂y
+        df_dx = np.diff(f_d, axis=1)  # ∂f_d/∂x
+        df_dy = np.diff(f_d, axis=0)  # ∂f_d/∂y
+        
+        # Average derivatives at 2x2 block centers
+        dt_dx_avg = (dt_dx[:-1,:] + dt_dx[1:,:]) / 2
+        dt_dy_avg = (dt_dy[:,:-1] + dt_dy[:,1:]) / 2
+        df_dx_avg = (df_dx[:-1,:] + df_dx[1:,:]) / 2
+        df_dy_avg = (df_dy[:,:-1] + df_dy[:,1:]) / 2
+        
+        # Jacobian determinant
+        det_J = dt_dx_avg * df_dy_avg - dt_dy_avg * df_dx_avg
+        
+        # True singularities have |det_J| > threshold
+        # Threshold based on data statistics
+        det_thresh = np.std(np.abs(det_J)) * 0.5
+        true_singularities = zeros_mask & (np.abs(det_J) > det_thresh)
+        
+        # Get coordinates of zeros (offset by 0.5 to center in 2x2 block)
+        zero_y, zero_x = np.where(true_singularities)
+        zero_x = zero_x + 0.5
+        zero_y = zero_y + 0.5
+        
+        # Get charges (sign of det_J) for coloring
+        charges = det_J[true_singularities]
+        
+        # Plot zeros: positive charge (white), negative charge (yellow)
+        pos_mask = charges > 0
+        neg_mask = charges < 0
+        if np.any(pos_mask):
+            ax.scatter(zero_x[pos_mask], h - zero_y[pos_mask], s=15, c='white', marker='o', edgecolors='black', linewidths=0.5, zorder=10)
+        if np.any(neg_mask):
+            ax.scatter(zero_x[neg_mask], h - zero_y[neg_mask], s=15, c='yellow', marker='o', edgecolors='black', linewidths=0.5, zorder=10)
+        
+        # Render to array
+        canvas.draw()
+        buf = canvas.buffer_rgba()
+        rgb_array = np.asarray(buf)[:, :, :3]  # Drop alpha
+        
+        rgb_uint8 = rgb_array.astype(np.uint8)
+    
+    elif compute_type == 'ridges':
+        # Find contours that connect singularities, show longest ones
+        import sys
+        print(f"=== RIDGES: Starting computation ===", file=sys.stderr, flush=True)
+        import matplotlib
+        matplotlib.use('Agg')
+        from matplotlib.figure import Figure
+        from matplotlib.backends.backend_agg import FigureCanvasAgg
+        import matplotlib.pyplot as plt
+        
+        t_d, f_d, ifdgram_data = results[0]
+        h, w = t_d.shape
+        
+        # First find singularities (same logic as crossings)
+        t_sign_change = ((t_d[:-1,:-1] * t_d[1:,1:] < 0) | (t_d[:-1,1:] * t_d[1:,:-1] < 0))
+        f_sign_change = ((f_d[:-1,:-1] * f_d[1:,1:] < 0) | (f_d[:-1,1:] * f_d[1:,:-1] < 0))
+        zeros_mask = t_sign_change & f_sign_change
+        
+        dt_dx = np.diff(t_d, axis=1)
+        dt_dy = np.diff(t_d, axis=0)
+        df_dx = np.diff(f_d, axis=1)
+        df_dy = np.diff(f_d, axis=0)
+        dt_dx_avg = (dt_dx[:-1,:] + dt_dx[1:,:]) / 2
+        dt_dy_avg = (dt_dy[:,:-1] + dt_dy[:,1:]) / 2
+        df_dx_avg = (df_dx[:-1,:] + df_dx[1:,:]) / 2
+        df_dy_avg = (df_dy[:,:-1] + df_dy[:,1:]) / 2
+        det_J = dt_dx_avg * df_dy_avg - dt_dy_avg * df_dx_avg
+        det_thresh = np.std(np.abs(det_J)) * 0.5
+        singularities = zeros_mask & (np.abs(det_J) > det_thresh)
+        
+        # Get singularity coordinates in (row, col) format
+        sing_y, sing_x = np.where(singularities)
+        sing_coords = set(zip(sing_y, sing_x))
+        
+        # Create figure matching image dimensions
+        dpi = 100
+        fig = Figure(figsize=(w/dpi, h/dpi), dpi=dpi)
+        canvas = FigureCanvasAgg(fig)
+        ax = fig.add_axes([0, 0, 1, 1])
+        ax.set_xlim(0, w)
+        ax.set_ylim(h, 0)  # Flip y-axis so origin is top-left like image
+        ax.set_axis_off()
+        
+        # Normalize ifdgram for background
+        ifd_norm = np.log(ifdgram_data + 0.3)
+        ifd_norm = (ifd_norm - ifd_norm.min()) / (ifd_norm.max() - ifd_norm.min() + 1e-10)
+        ax.imshow(ifd_norm, cmap='gray', vmin=0, vmax=4, aspect='auto', extent=[0, w, h, 0])
+        
+        # Debug: check displacement arrays
+        print(f"t_d shape: {t_d.shape}, min={t_d.min():.2f}, max={t_d.max():.2f}", file=sys.stderr, flush=True)
+        print(f"f_d shape: {f_d.shape}, min={f_d.min():.2f}, max={f_d.max():.2f}", file=sys.stderr, flush=True)
+        
+        # Extract contour paths using ax.contour (invisible, just for path extraction)
+        t_cs = ax.contour(t_d, levels=[0], colors=['red'], linewidths=0.1, alpha=0)
+        f_cs = ax.contour(f_d, levels=[0], colors=['blue'], linewidths=0.1, alpha=0)
+        
+        # Get all paths from contour sets (newer matplotlib uses allsegs or get_paths())
+        t_paths = t_cs.allsegs[0] if hasattr(t_cs, 'allsegs') else [p.vertices for p in t_cs.get_paths()]
+        f_paths = f_cs.allsegs[0] if hasattr(f_cs, 'allsegs') else [p.vertices for p in f_cs.get_paths()]
+        print(f"t_paths: {len(t_paths)}, f_paths: {len(f_paths)}", file=sys.stderr, flush=True)
+        
+        def find_nearest_singularity(pt, sing_set, tolerance=3):
+            """Find nearest singularity to a point, return (row, col) or None"""
+            col, row = pt[0], pt[1]
+            for dr in range(-tolerance, tolerance+1):
+                for dc in range(-tolerance, tolerance+1):
+                    r, c = int(row+dr), int(col+dc)
+                    if (r, c) in sing_set:
+                        return (r, c)
+            return None
+        
+        def segment_contour_at_zeros(verts, sing_set, tolerance=5):
+            """Split a contour into segments at each zero crossing.
+            Returns list of (segment_verts, start_sing, end_sing) tuples."""
+            if len(verts) < 2:
+                return []
+            
+            # Find all indices where contour passes near a singularity
+            crossing_indices = []
+            crossing_sings = []
+            last_sing = None
+            
+            for i, pt in enumerate(verts):
+                sing = find_nearest_singularity(pt, sing_set, tolerance)
+                if sing is not None and sing != last_sing:
+                    crossing_indices.append(i)
+                    crossing_sings.append(sing)
+                    last_sing = sing
+                elif sing is None:
+                    last_sing = None
+            
+            # Need at least 2 crossings to make a segment
+            if len(crossing_indices) < 2:
+                return []
+            
+            # Create segments between consecutive crossings
+            segments = []
+            for i in range(len(crossing_indices) - 1):
+                start_idx = crossing_indices[i]
+                end_idx = crossing_indices[i + 1]
+                if end_idx - start_idx >= 2:  # Need at least 2 points
+                    seg_verts = verts[start_idx:end_idx + 1]
+                    segments.append((seg_verts, crossing_sings[i], crossing_sings[i + 1]))
+            
+            return segments
+        
+        def touches_boundary(path_verts, h, w, margin=3):
+            """Check if any point in contour touches image boundary"""
+            for pt in path_verts:
+                col, row = pt[0], pt[1]
+                if col < margin or col > w - margin - 1 or row < margin or row > h - margin - 1:
+                    return True
+            return False
+        
+        def integrate_power_along_ridge(verts, power_image):
+            """Integrate power from the reassignment image along a ridge path."""
+            total_power = 0.0
+            h, w = power_image.shape
+            for pt in verts:
+                col, row = int(pt[0]), int(pt[1])
+                if 0 <= row < h and 0 <= col < w:
+                    total_power += power_image[row, col]
+            return total_power
+        
+        # Collect all ridge segments (contour pieces between singularities)
+        all_segments = []
+        total_paths = 0
+        for paths, ctype in [(t_paths, 't'), (f_paths, 'f')]:
+            for verts in paths:
+                total_paths += 1
+                verts = np.array(verts)  # Ensure numpy array
+                # Segment the contour at zeros
+                segments = segment_contour_at_zeros(verts, sing_coords, tolerance=5)
+                for seg_verts, start_sing, end_sing in segments:
+                    # Skip segments that touch boundary
+                    if touches_boundary(seg_verts, h, w):
+                        continue
+                    # Integrate power along the ridge
+                    power = integrate_power_along_ridge(seg_verts, ifdgram_data)
+                    all_segments.append((ctype, seg_verts, power, start_sing, end_sing))
+        
+        print(f"Ridges: {len(sing_coords)} singularities, {total_paths} total paths, {len(all_segments)} segments between zeros", file=sys.stderr, flush=True)
+        
+        # Sort by integrated power and take top segments (top 1%, min 20, max 200)
+        all_segments.sort(key=lambda x: x[2], reverse=True)
+        n_top = max(20, min(200, len(all_segments) // 100)) if all_segments else 0
+        top_segments = all_segments[:n_top]
+        
+        # Debug: show power range
+        if top_segments:
+            powers = [s[2] for s in top_segments]
+            print(f"Showing top {len(top_segments)} of {len(all_segments)} ridge segments by integrated power", file=sys.stderr, flush=True)
+            print(f"Power range: max={powers[0]:.2f}, min={powers[-1]:.2f}", file=sys.stderr, flush=True)
+        
+        # Draw top segments - verts are (col, row) = (x, y)
+        for ctype, verts, length, start_sing, end_sing in top_segments:
+            color = 'red' if ctype == 't' else 'blue'
+            ax.plot(verts[:, 0], verts[:, 1], color=color, linewidth=0.5, zorder=5)
+        
+        # Draw singularities as small dots (visible)
+        ax.scatter(sing_x + 0.5, sing_y + 0.5, s=3, c='green', marker='o', zorder=10)
+        
+        canvas.draw()
+        buf = canvas.buffer_rgba()
+        rgb_array = np.asarray(buf)[:, :, :3]
+        rgb_uint8 = rgb_array.astype(np.uint8)
+    
     else:
         # Normalize each channel with log transform
         def normalize(img, offset):
@@ -225,11 +496,14 @@ def list_wavfiles():
 @app.route('/api/compute', methods=['POST'])
 def compute():
     """Compute spectrogram with given parameters."""
+    import sys
     data = request.get_json()
+    print(f"=== API COMPUTE CALLED ===", file=sys.stderr, flush=True)
     
     wav_name = data.get('wav')
     sigmas = data.get('sigmas', [1.0, 2.0, 3.0])
     compute_type = data.get('type', 'ifdgram')  # 'ifdgram' or 'sonogram'
+    print(f"Computing: {wav_name} type={compute_type}", file=sys.stderr, flush=True)
     fft_size = data.get('fft_size', 1024)
     step_size = data.get('step_size', 72)
     superres = data.get('superres', 1)
