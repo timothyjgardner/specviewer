@@ -288,6 +288,33 @@
             <button onclick="adjustThreshold('threshMax', 0.05)">+</button>
         </div>
         
+        <div id="combinedControls" style="display:none">
+            <div class="control-group">
+                <label>Zeros Min:</label>
+                <button onclick="adjustCombined('zerosMin', -0.05)">−</button>
+                <input type="number" id="zerosMin" value="0.0" min="0" max="1" step="0.05" style="width:55px">
+                <button onclick="adjustCombined('zerosMin', 0.05)">+</button>
+            </div>
+            <div class="control-group">
+                <label>Zeros Max:</label>
+                <button onclick="adjustCombined('zerosMax', -0.05)">−</button>
+                <input type="number" id="zerosMax" value="1.0" min="0" max="1" step="0.05" style="width:55px">
+                <button onclick="adjustCombined('zerosMax', 0.05)">+</button>
+            </div>
+            <div class="control-group">
+                <label>IFD Min:</label>
+                <button onclick="adjustCombined('ifdMin', -0.05)">−</button>
+                <input type="number" id="ifdMin" value="0.0" min="0" max="1" step="0.05" style="width:55px">
+                <button onclick="adjustCombined('ifdMin', 0.05)">+</button>
+            </div>
+            <div class="control-group">
+                <label>IFD Max:</label>
+                <button onclick="adjustCombined('ifdMax', -0.05)">−</button>
+                <input type="number" id="ifdMax" value="1.0" min="0" max="1" step="0.05" style="width:55px">
+                <button onclick="adjustCombined('ifdMax', 0.05)">+</button>
+            </div>
+        </div>
+        
         <div class="control-group">
             <label>X:</label>
             <button onclick="adjustZoom('x', 0.8)">−</button>
@@ -495,6 +522,8 @@
             document.getElementById('btnSonogram').classList.toggle('active', type === 'sonogram');
             document.getElementById('btnZeros').classList.toggle('active', type === 'zeros');
             document.getElementById('btnCombined').classList.toggle('active', type === 'combined');
+            // Show/hide min/max controls for combined view
+            document.getElementById('combinedControls').style.display = type === 'combined' ? '' : 'none';
             recompute(false);  // Don't reset view when switching type
         }
         
@@ -542,6 +571,14 @@
             value = Math.max(0, Math.min(1, value + delta));
             input.value = value.toFixed(2);
             render();  // Real-time update via WebGL
+        }
+        
+        function adjustCombined(id, delta) {
+            const input = document.getElementById(id);
+            let value = parseFloat(input.value) || 0;
+            value = Math.max(0, Math.min(1, value + delta));
+            input.value = value.toFixed(2);
+            recompute(false);  // Requires server recompute
         }
         
         async function loadWavList() {
@@ -762,6 +799,11 @@
             computeBtn.disabled = true;
             
             try {
+                const zerosMin = parseFloat(document.getElementById('zerosMin').value) || 0.0;
+                const zerosMax = parseFloat(document.getElementById('zerosMax').value) || 1.0;
+                const ifdMin = parseFloat(document.getElementById('ifdMin').value) || 0.0;
+                const ifdMax = parseFloat(document.getElementById('ifdMax').value) || 1.0;
+                
                 const response = await fetch('/api/compute', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -775,7 +817,11 @@
                         lock_t: lockT,
                         lock_f: lockF,
                         log_offset: logOffset,
-                        crop_f: 1.0  // Always compute full range, WebGL handles cropping
+                        crop_f: 1.0,  // Always compute full range, WebGL handles cropping
+                        zeros_min: zerosMin,
+                        zeros_max: zerosMax,
+                        ifd_min: ifdMin,
+                        ifd_max: ifdMax
                     })
                 });
                 
