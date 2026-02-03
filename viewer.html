@@ -187,6 +187,8 @@
             <button id="btnSonogram" onclick="setType('sonogram')">sonogram</button>
             <button id="btnZeros" onclick="setType('zeros')">zeros</button>
             <button id="btnCombined" onclick="setType('combined')">combined</button>
+            <button id="btnCrossings" onclick="setType('crossings')">crossings</button>
+            <button id="btnRidges" onclick="setType('ridges')">ridges</button>
         </div>
         
         <div class="divider"></div>
@@ -220,16 +222,16 @@
             <select id="fftSize">
                 <option value="256">256</option>
                 <option value="512">512</option>
-                <option value="1024" selected>1024</option>
+                <option value="1024">1024</option>
                 <option value="2048">2048</option>
-                <option value="4096">4096</option>
+                <option value="4096" selected>4096</option>
             </select>
         </div>
         
         <div class="control-group">
             <label>Step:</label>
             <button onclick="adjustStep(-64)">−</button>
-            <input type="number" id="stepSize" value="72" min="1" max="1024" step="1" style="width:70px">
+            <input type="number" id="stepSize" value="8" min="1" max="1024" step="1" style="width:70px">
             <button onclick="adjustStep(64)">+</button>
         </div>
         
@@ -278,14 +280,14 @@
             <div class="control-group">
                 <label>Min:</label>
                 <button onclick="adjustThreshold('threshMin', -0.05)">−</button>
-                <input type="number" id="threshMin" value="0.05" min="0" max="1" step="0.05" style="width:60px" oninput="render()">
+                <input type="number" id="threshMin" value="0.00" min="0" max="1" step="0.05" style="width:60px" oninput="render()">
                 <button onclick="adjustThreshold('threshMin', 0.05)">+</button>
             </div>
             
             <div class="control-group">
                 <label>Max:</label>
                 <button onclick="adjustThreshold('threshMax', -0.05)">−</button>
-                <input type="number" id="threshMax" value="0.80" min="0" max="1" step="0.05" style="width:60px" oninput="render()">
+                <input type="number" id="threshMax" value="0.10" min="0" max="1" step="0.05" style="width:60px" oninput="render()">
                 <button onclick="adjustThreshold('threshMax', 0.05)">+</button>
             </div>
         </div>
@@ -314,6 +316,15 @@
                 <button onclick="adjustCombined('ifdMax', -0.05)">−</button>
                 <input type="number" id="ifdMax" value="1.0" min="0" max="1" step="0.05" style="width:55px" oninput="render()">
                 <button onclick="adjustCombined('ifdMax', 0.05)">+</button>
+            </div>
+        </div>
+        
+        <div id="ridgesControls" style="display:none">
+            <div class="control-group">
+                <label>Background:</label>
+                <button onclick="adjustRidges('bgIntensity', -0.1)">−</button>
+                <input type="number" id="bgIntensity" value="0.5" min="0" max="1" step="0.1" style="width:55px" oninput="recompute(false)">
+                <button onclick="adjustRidges('bgIntensity', 0.1)">+</button>
             </div>
         </div>
         
@@ -570,9 +581,12 @@
             document.getElementById('btnSonogram').classList.toggle('active', type === 'sonogram');
             document.getElementById('btnZeros').classList.toggle('active', type === 'zeros');
             document.getElementById('btnCombined').classList.toggle('active', type === 'combined');
+            document.getElementById('btnCrossings').classList.toggle('active', type === 'crossings');
+            document.getElementById('btnRidges').classList.toggle('active', type === 'ridges');
             // Show/hide appropriate threshold controls for combined vs other views
-            document.getElementById('standardThresholds').style.display = type === 'combined' ? 'none' : '';
+            document.getElementById('standardThresholds').style.display = (type === 'combined' || type === 'ridges') ? 'none' : '';
             document.getElementById('combinedControls').style.display = type === 'combined' ? '' : 'none';
+            document.getElementById('ridgesControls').style.display = type === 'ridges' ? '' : 'none';
             recompute(false);  // Don't reset view when switching type
         }
         
@@ -630,6 +644,14 @@
             render();  // Real-time WebGL update
         }
         
+        function adjustRidges(id, delta) {
+            const input = document.getElementById(id);
+            let value = parseFloat(input.value) || 0;
+            value = Math.max(0, Math.min(1, value + delta));
+            input.value = value.toFixed(1);
+            recompute(false);  // Need to recompute to change zeros color
+        }
+        
         async function loadWavList() {
             try {
                 const response = await fetch('/api/wavfiles');
@@ -644,8 +666,8 @@
                 });
                 
                 if (wavFiles.length > 0) {
-                    // Prefer canary.wav, otherwise use first file
-                    const defaultWav = wavFiles.includes('canary.wav') ? 'canary.wav' : wavFiles[0];
+                    // Prefer noisyfinch.wav, otherwise use first file
+                    const defaultWav = wavFiles.includes('noisyfinch.wav') ? 'noisyfinch.wav' : wavFiles[0];
                     wavSelect.value = defaultWav;
                     currentWav = defaultWav;
                     loadAudio(defaultWav);
@@ -848,6 +870,8 @@
             computeBtn.disabled = true;
             
             try {
+                const bgIntensity = parseFloat(document.getElementById('bgIntensity').value) || 0.5;
+                
                 const response = await fetch('/api/compute', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -861,7 +885,8 @@
                         lock_t: lockT,
                         lock_f: lockF,
                         log_offset: logOffset,
-                        crop_f: 1.0  // Always compute full range, WebGL handles cropping
+                        crop_f: 1.0,  // Always compute full range, WebGL handles cropping
+                        bg_intensity: bgIntensity
                     })
                 });
                 
@@ -1064,15 +1089,15 @@
             document.getElementById('sigma1').value = '1.0';
             document.getElementById('sigma2').value = '2.0';
             document.getElementById('sigma3').value = '3.0';
-            document.getElementById('fftSize').value = '1024';
-            document.getElementById('stepSize').value = '72';
+            document.getElementById('fftSize').value = '4096';
+            document.getElementById('stepSize').value = '8';
             document.getElementById('superres').value = '1';
             document.getElementById('lockT').value = '5';
             document.getElementById('lockF').value = '5';
             document.getElementById('logOffset').value = '0.3';
             document.getElementById('cropF').value = '0.4';
-            document.getElementById('threshMin').value = '0.05';
-            document.getElementById('threshMax').value = '0.80';
+            document.getElementById('threshMin').value = '0.00';
+            document.getElementById('threshMax').value = '0.10';
         }
         
         // WAV select change - reset to defaults and load audio

@@ -146,16 +146,40 @@ def ifdv(s, sampling, n, overlap, sigma, zoom_t, zoom_f, tl, fl):
     t_e_flat = (t_e - 1).flatten()
     q_flat = q_mod.flatten()
     
-    # Build the remapped sonogram using accumarray equivalent
+    # Build the fully remapped sonogram using accumarray equivalent
     # np.add.at allows accumulation at repeated indices
     newq = np.zeros((f_final, t_final))
     np.add.at(newq, (f_e_flat, t_e_flat), q_flat)
     
+    # Build time-only reassigned spectrogram (reassign in time, keep original frequency)
+    f_orig = np.clip(fref.astype(int), 1, f_final)  # Original frequency indices
+    f_orig_flat = (f_orig - 1).flatten()
+    newq_t = np.zeros((f_final, t_final))
+    np.add.at(newq_t, (f_orig_flat, t_e_flat), q_flat)
+    
+    # Build frequency-only reassigned spectrogram (reassign in frequency, keep original time)
+    t_orig = np.clip(tref.astype(int), 1, t_final)  # Original time indices
+    t_orig_flat = (t_orig - 1).flatten()
+    newq_f = np.zeros((f_final, t_final))
+    np.add.at(newq_f, (f_e_flat, t_orig_flat), q_flat)
+    
     # Flip so low frequency is at the bottom
     ifdgram = np.flipud(newq)
+    ifdgram_t = np.flipud(newq_t)  # Time-only reassignment
+    ifdgram_f = np.flipud(newq_f)  # Frequency-only reassignment
     sonogram = np.flipud(sonogram)
     
-    return ifdgram, sonogram, dx
+    # Compute displacement fields (how far each point moves)
+    # Time displacement: difference between reassigned time and original time
+    t_displacement = t_est - to
+    # Frequency displacement: difference between reassigned freq and original freq  
+    f_displacement = f_est - (fo * n + 1)
+    
+    # Flip to match spectrogram orientation
+    t_displacement = np.flipud(t_displacement)
+    f_displacement = np.flipud(f_displacement)
+    
+    return ifdgram, sonogram, dx, t_displacement, f_displacement, ifdgram_t, ifdgram_f
 
 
 def _specgram(x, nfft, window, noverlap):
