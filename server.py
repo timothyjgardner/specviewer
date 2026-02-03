@@ -108,7 +108,15 @@ def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024,
                 inv_mag = scipy_zoom(inv_mag, (scale_f, scale_t), order=1)
             results.append((inv_mag, ifdgram))  # Store both for combined view
         else:
-            results.append(np.abs(sonogram))
+            # Sonogram view - resample to match ifdgram dimensions for alignment
+            sono_mag = np.abs(sonogram)
+            sono_mag = sono_mag[:n//2, :]  # Keep only positive frequencies
+            if sono_mag.shape != ifdgram.shape:
+                from scipy.ndimage import zoom as scipy_zoom
+                scale_f = ifdgram.shape[0] / sono_mag.shape[0]
+                scale_t = ifdgram.shape[1] / sono_mag.shape[1]
+                sono_mag = scipy_zoom(sono_mag, (scale_f, scale_t), order=1)
+            results.append(sono_mag)
     
     # Crop to show only low frequency portion (crop_f=0.5 means bottom half, crop_f=1.0 means full)
     if compute_type in ['zeros', 'combined']:
