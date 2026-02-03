@@ -8,9 +8,10 @@ __pycache__/
 # Batch processing script (not needed for interactive viewer)
 process_wavs.py
 
-# WAV files (except canary.wav)
+# WAV files (except samples)
 *.wav
 !canary.wav
+!noisyfinch.wav
 
 # Generated images (except screenshot)
 *_ifdgram.png
