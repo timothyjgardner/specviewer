@@ -274,18 +274,20 @@
             <button onclick="adjustCropF(0.1)">+</button>
         </div>
         
-        <div class="control-group">
-            <label>Min:</label>
-            <button onclick="adjustThreshold('threshMin', -0.05)">−</button>
-            <input type="number" id="threshMin" value="0.05" min="0" max="1" step="0.05" style="width:60px" oninput="render()">
-            <button onclick="adjustThreshold('threshMin', 0.05)">+</button>
-        </div>
-        
-        <div class="control-group">
-            <label>Max:</label>
-            <button onclick="adjustThreshold('threshMax', -0.05)">−</button>
-            <input type="number" id="threshMax" value="0.80" min="0" max="1" step="0.05" style="width:60px" oninput="render()">
-            <button onclick="adjustThreshold('threshMax', 0.05)">+</button>
+        <div id="standardThresholds">
+            <div class="control-group">
+                <label>Min:</label>
+                <button onclick="adjustThreshold('threshMin', -0.05)">−</button>
+                <input type="number" id="threshMin" value="0.05" min="0" max="1" step="0.05" style="width:60px" oninput="render()">
+                <button onclick="adjustThreshold('threshMin', 0.05)">+</button>
+            </div>
+            
+            <div class="control-group">
+                <label>Max:</label>
+                <button onclick="adjustThreshold('threshMax', -0.05)">−</button>
+                <input type="number" id="threshMax" value="0.80" min="0" max="1" step="0.05" style="width:60px" oninput="render()">
+                <button onclick="adjustThreshold('threshMax', 0.05)">+</button>
+            </div>
         </div>
         
         <div id="combinedControls" style="display:none">
@@ -568,7 +570,8 @@
             document.getElementById('btnSonogram').classList.toggle('active', type === 'sonogram');
             document.getElementById('btnZeros').classList.toggle('active', type === 'zeros');
             document.getElementById('btnCombined').classList.toggle('active', type === 'combined');
-            // Show/hide min/max controls for combined view
+            // Show/hide appropriate threshold controls for combined vs other views
+            document.getElementById('standardThresholds').style.display = type === 'combined' ? 'none' : '';
             document.getElementById('combinedControls').style.display = type === 'combined' ? '' : 'none';
             recompute(false);  // Don't reset view when switching type
         }
