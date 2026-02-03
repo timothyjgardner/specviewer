@@ -22,10 +22,10 @@ wav_cache = {}
 # Cache for computed spectrograms (keyed by parameters)
 spectrogram_cache = {}
 
-def get_cache_key(wav_name, sigmas, compute_type, fft_size, step_size, superres, lock_t, lock_f, log_offset, crop_f, zeros_min=0.0, zeros_max=1.0, ifd_min=0.0, ifd_max=1.0):
+def get_cache_key(wav_name, sigmas, compute_type, fft_size, step_size, superres, lock_t, lock_f, log_offset, crop_f):
     """Generate a cache key from parameters."""
     sigma_str = ','.join(f'{s:.1f}' for s in sigmas)
-    return f"{wav_name}|{sigma_str}|{compute_type}|{fft_size}|{step_size}|{superres}|{lock_t}|{lock_f}|{log_offset:.2f}|{crop_f:.1f}|{zeros_min:.2f}|{zeros_max:.2f}|{ifd_min:.2f}|{ifd_max:.2f}"
+    return f"{wav_name}|{sigma_str}|{compute_type}|{fft_size}|{step_size}|{superres}|{lock_t}|{lock_f}|{log_offset:.2f}|{crop_f:.1f}"
 
 def load_wav(wav_path):
     """Load and normalize WAV file, with caching."""
@@ -53,11 +53,10 @@ def load_wav(wav_path):
 
 
 def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024, step_size=72,
-                        superres=1, lock_t=5, lock_f=5, log_offset=0.3, crop_f=1.0,
-                        zeros_min=0.0, zeros_max=1.0, ifd_min=0.0, ifd_max=1.0):
+                        superres=1, lock_t=5, lock_f=5, log_offset=0.3, crop_f=1.0):
     """Compute spectrogram with given parameters and return as base64 PNG."""
     # Check cache first
-    cache_key = get_cache_key(wav_name, sigmas, compute_type, fft_size, step_size, superres, lock_t, lock_f, log_offset, crop_f, zeros_min, zeros_max, ifd_min, ifd_max)
+    cache_key = get_cache_key(wav_name, sigmas, compute_type, fft_size, step_size, superres, lock_t, lock_f, log_offset, crop_f)
     if cache_key in spectrogram_cache:
         print(f"  Cache hit: {wav_name} ({compute_type})")
         return spectrogram_cache[cache_key], None
@@ -154,50 +153,26 @@ def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024,
         rgb_uint8 = np.stack([r, g, b], axis=-1).astype(np.uint8)
     
     elif compute_type == 'combined':
-        # Combined view: zeros (blue) + ifdgram (orange/hot)
+        # Combined view: send zeros and ifdgram as separate channels for WebGL blending
+        # R = zeros (normalized), G = ifdgram (normalized), B = 0
         inv_mag, ifdgram_data = results[0]
         
-        # Process zeros - black→blue→cyan
+        # Process zeros - normalize
         max_inv = np.median(inv_mag) * 10
         zeros_norm = np.clip(inv_mag, 0, max_inv)
         zeros_norm = np.log(zeros_norm + 1)
         zeros_norm = zeros_norm / (zeros_norm.max() + 1e-10)
         
-        # Apply zeros min/max thresholding
-        zeros_range = zeros_max - zeros_min
-        if zeros_range > 0.001:
-            zeros_norm = (zeros_norm - zeros_min) / zeros_range
-            zeros_norm = np.clip(zeros_norm, 0, 1)
-        
         # Process ifdgram - normalize with log
         ifd_norm = np.log(ifdgram_data + log_offset)
         ifd_norm = (ifd_norm - ifd_norm.min()) / (ifd_norm.max() - ifd_norm.min() + 1e-10)
         
-        # Apply ifd min/max thresholding
-        ifd_range = ifd_max - ifd_min
-        if ifd_range > 0.001:
-            ifd_norm = (ifd_norm - ifd_min) / ifd_range
-            ifd_norm = np.clip(ifd_norm, 0, 1)
+        # Pack into RGB: R=zeros, G=ifdgram, B=0 (WebGL will apply colormaps)
+        r = (zeros_norm * 255).astype(np.uint8)
+        g = (ifd_norm * 255).astype(np.uint8)
+        b = np.zeros_like(r)
         
-        # Zeros: contributes to blue/cyan
-        # Ifdgram: contributes to red/orange (hot colormap)
-        
-        # Hot colormap for ifdgram: black→red→orange→yellow
-        ifd_r = np.clip(ifd_norm * 3, 0, 1) * 255
-        ifd_g = np.clip(ifd_norm * 3 - 1, 0, 1) * 255
-        ifd_b = np.zeros_like(ifd_norm)
-        
-        # Zeros colormap: black→blue→cyan
-        zeros_r = np.power(zeros_norm, 2.0) * 100
-        zeros_g = np.power(zeros_norm, 1.2) * 150
-        zeros_b = np.power(zeros_norm, 0.5) * 255
-        
-        # Combine: add the two
-        r = np.clip(ifd_r + zeros_r, 0, 255)
-        g = np.clip(ifd_g + zeros_g, 0, 255)
-        b = np.clip(ifd_b + zeros_b, 0, 255)
-        
-        rgb_uint8 = np.stack([r, g, b], axis=-1).astype(np.uint8)
+        rgb_uint8 = np.stack([r, g, b], axis=-1)
     else:
         # Normalize each channel with log transform
         def normalize(img, offset):
@@ -262,10 +237,6 @@ def compute():
     lock_f = data.get('lock_f', 5)
     log_offset = data.get('log_offset', 0.3)
     crop_f = data.get('crop_f', 1.0)
-    zeros_min = data.get('zeros_min', 0.0)
-    zeros_max = data.get('zeros_max', 1.0)
-    ifd_min = data.get('ifd_min', 0.0)
-    ifd_max = data.get('ifd_max', 1.0)
     
     if not wav_name:
         return jsonify({'error': 'No WAV file specified'}), 400
@@ -305,8 +276,7 @@ def compute():
         return jsonify({'error': 'Invalid superres, lock, log_offset, or crop parameters'}), 400
     
     img_base64, error = compute_spectrogram(wav_name, sigmas, compute_type, fft_size, step_size,
-                                            superres, lock_t, lock_f, log_offset, crop_f,
-                                            zeros_min, zeros_max, ifd_min, ifd_max)
+                                            superres, lock_t, lock_f, log_offset, crop_f)
     
     if error:
         return jsonify({'error': error}), 400

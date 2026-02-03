@@ -292,25 +292,25 @@
             <div class="control-group">
                 <label>Zeros Min:</label>
                 <button onclick="adjustCombined('zerosMin', -0.05)">−</button>
-                <input type="number" id="zerosMin" value="0.0" min="0" max="1" step="0.05" style="width:55px">
+                <input type="number" id="zerosMin" value="0.0" min="0" max="1" step="0.05" style="width:55px" oninput="render()">
                 <button onclick="adjustCombined('zerosMin', 0.05)">+</button>
             </div>
             <div class="control-group">
                 <label>Zeros Max:</label>
                 <button onclick="adjustCombined('zerosMax', -0.05)">−</button>
-                <input type="number" id="zerosMax" value="1.0" min="0" max="1" step="0.05" style="width:55px">
+                <input type="number" id="zerosMax" value="1.0" min="0" max="1" step="0.05" style="width:55px" oninput="render()">
                 <button onclick="adjustCombined('zerosMax', 0.05)">+</button>
             </div>
             <div class="control-group">
                 <label>IFD Min:</label>
                 <button onclick="adjustCombined('ifdMin', -0.05)">−</button>
-                <input type="number" id="ifdMin" value="0.0" min="0" max="1" step="0.05" style="width:55px">
+                <input type="number" id="ifdMin" value="0.0" min="0" max="1" step="0.05" style="width:55px" oninput="render()">
                 <button onclick="adjustCombined('ifdMin', 0.05)">+</button>
             </div>
             <div class="control-group">
                 <label>IFD Max:</label>
                 <button onclick="adjustCombined('ifdMax', -0.05)">−</button>
-                <input type="number" id="ifdMax" value="1.0" min="0" max="1" step="0.05" style="width:55px">
+                <input type="number" id="ifdMax" value="1.0" min="0" max="1" step="0.05" style="width:55px" oninput="render()">
                 <button onclick="adjustCombined('ifdMax', 0.05)">+</button>
             </div>
         </div>
@@ -365,6 +365,11 @@
         uniform float u_threshMin;  // Values below this become 0
         uniform float u_threshMax;  // Values above this become 1
         uniform float u_cropF;      // Show only bottom cropF of frequency range
+        uniform int u_combined;     // 1 if combined mode, 0 otherwise
+        uniform float u_zerosMin;   // Zeros threshold min
+        uniform float u_zerosMax;   // Zeros threshold max
+        uniform float u_ifdMin;     // IFD threshold min
+        uniform float u_ifdMax;     // IFD threshold max
         
         varying vec2 v_position;
         
@@ -402,17 +407,52 @@
                 }
             }
             
-            // Apply thresholding: rescale from [threshMin, threshMax] to [0, 1]
-            float range = u_threshMax - u_threshMin;
-            if (range > 0.001) {
-                maxColor = (maxColor - u_threshMin) / range;
-                maxColor = clamp(maxColor, 0.0, 1.0);
-            }
-            
             vec2 baseUV = imagePos / effectiveTextureSize;
             if (baseUV.x < -0.5 || baseUV.x > 1.5 || baseUV.y < -0.5 || baseUV.y > 1.5) {
                 gl_FragColor = vec4(0.1, 0.1, 0.1, 1.0);
+            } else if (u_combined == 1) {
+                // Combined mode: R=zeros, G=ifdgram - apply separate thresholds and colormaps
+                float zeros = maxColor.r;
+                float ifd = maxColor.g;
+                
+                // Apply zeros threshold
+                float zerosRange = u_zerosMax - u_zerosMin;
+                if (zerosRange > 0.001) {
+                    zeros = (zeros - u_zerosMin) / zerosRange;
+                    zeros = clamp(zeros, 0.0, 1.0);
+                }
+                
+                // Apply ifd threshold
+                float ifdRange = u_ifdMax - u_ifdMin;
+                if (ifdRange > 0.001) {
+                    ifd = (ifd - u_ifdMin) / ifdRange;
+                    ifd = clamp(ifd, 0.0, 1.0);
+                }
+                
+                // Zeros colormap: black→blue→cyan
+                vec3 zerosColor = vec3(
+                    pow(zeros, 2.0) * 0.4,
+                    pow(zeros, 1.2) * 0.6,
+                    pow(zeros, 0.5)
+                );
+                
+                // IFD colormap: black→red→orange→yellow (hot)
+                vec3 ifdColor = vec3(
+                    clamp(ifd * 3.0, 0.0, 1.0),
+                    clamp(ifd * 3.0 - 1.0, 0.0, 1.0),
+                    0.0
+                );
+                
+                // Combine
+                vec3 combined = clamp(zerosColor + ifdColor, 0.0, 1.0);
+                gl_FragColor = vec4(combined, 1.0);
             } else {
+                // Normal mode: apply standard thresholding
+                float range = u_threshMax - u_threshMin;
+                if (range > 0.001) {
+                    maxColor = (maxColor - u_threshMin) / range;
+                    maxColor = clamp(maxColor, 0.0, 1.0);
+                }
                 gl_FragColor = vec4(maxColor, 1.0);
             }
         }
@@ -440,6 +480,7 @@
         
         let gl, program, texture;
         let u_textureSize, u_canvasSize, u_scale, u_pan, u_threshMin, u_threshMax, u_cropF;
+        let u_combined, u_zerosMin, u_zerosMax, u_ifdMin, u_ifdMax;
         
         const canvas = document.getElementById('glCanvas');
         const viewer = document.getElementById('viewer');
@@ -508,6 +549,11 @@
             u_threshMin = gl.getUniformLocation(program, 'u_threshMin');
             u_threshMax = gl.getUniformLocation(program, 'u_threshMax');
             u_cropF = gl.getUniformLocation(program, 'u_cropF');
+            u_combined = gl.getUniformLocation(program, 'u_combined');
+            u_zerosMin = gl.getUniformLocation(program, 'u_zerosMin');
+            u_zerosMax = gl.getUniformLocation(program, 'u_zerosMax');
+            u_ifdMin = gl.getUniformLocation(program, 'u_ifdMin');
+            u_ifdMax = gl.getUniformLocation(program, 'u_ifdMax');
             
             texture = gl.createTexture();
             gl.bindTexture(gl.TEXTURE_2D, texture);
@@ -578,7 +624,7 @@
             let value = parseFloat(input.value) || 0;
             value = Math.max(0, Math.min(1, value + delta));
             input.value = value.toFixed(2);
-            recompute(false);  // Requires server recompute
+            render();  // Real-time WebGL update
         }
         
         async function loadWavList() {
@@ -799,11 +845,6 @@
             computeBtn.disabled = true;
             
             try {
-                const zerosMin = parseFloat(document.getElementById('zerosMin').value) || 0.0;
-                const zerosMax = parseFloat(document.getElementById('zerosMax').value) || 1.0;
-                const ifdMin = parseFloat(document.getElementById('ifdMin').value) || 0.0;
-                const ifdMax = parseFloat(document.getElementById('ifdMax').value) || 1.0;
-                
                 const response = await fetch('/api/compute', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -817,11 +858,7 @@
                         lock_t: lockT,
                         lock_f: lockF,
                         log_offset: logOffset,
-                        crop_f: 1.0,  // Always compute full range, WebGL handles cropping
-                        zeros_min: zerosMin,
-                        zeros_max: zerosMax,
-                        ifd_min: ifdMin,
-                        ifd_max: ifdMax
+                        crop_f: 1.0  // Always compute full range, WebGL handles cropping
                     })
                 });
                 
@@ -892,6 +929,17 @@
             // Real-time frequency crop
             const cropF = parseFloat(document.getElementById('cropF').value) || 0.5;
             gl.uniform1f(u_cropF, cropF);
+            
+            // Combined mode uniforms
+            gl.uniform1i(u_combined, currentType === 'combined' ? 1 : 0);
+            const zerosMin = parseFloat(document.getElementById('zerosMin').value) || 0;
+            const zerosMax = parseFloat(document.getElementById('zerosMax').value) || 1;
+            const ifdMin = parseFloat(document.getElementById('ifdMin').value) || 0;
+            const ifdMax = parseFloat(document.getElementById('ifdMax').value) || 1;
+            gl.uniform1f(u_zerosMin, zerosMin);
+            gl.uniform1f(u_zerosMax, zerosMax);
+            gl.uniform1f(u_ifdMin, ifdMin);
+            gl.uniform1f(u_ifdMax, ifdMax);
             
             gl.drawArrays(gl.TRIANGLES, 0, 6);
         }
