@@ -53,10 +53,9 @@ def load_wav(wav_path):
 
 
 def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024, step_size=72,
-                        superres=1, lock_t=5, lock_f=5, log_offset=0.3, crop_f=1.0, bg_intensity=0.5):
+                        superres=1, lock_t=5, lock_f=5, log_offset=0.3, crop_f=1.0):
     """Compute spectrogram with given parameters and return as base64 PNG."""
-    # Check cache first (include bg_intensity for ridges view)
-    cache_key = get_cache_key(wav_name, sigmas, compute_type, fft_size, step_size, superres, lock_t, lock_f, log_offset, crop_f) + f"_bg{bg_intensity}"
+    cache_key = get_cache_key(wav_name, sigmas, compute_type, fft_size, step_size, superres, lock_t, lock_f, log_offset, crop_f)
     if cache_key in spectrogram_cache:
         print(f"  Cache hit: {wav_name} ({compute_type})")
         return spectrogram_cache[cache_key], None
@@ -91,7 +90,7 @@ def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024,
     # Compute for each sigma
     results = []
     for sigma in sigmas:
-        ifdgram, sonogram, dx, t_disp, f_disp, ifdgram_t, ifdgram_f = ifdv(data, sampling_rate, n, overlap, sigma, zoom_t, zoom_f, tl, fl)
+        ifdgram, sonogram, dx, t_disp, f_disp, _, _ = ifdv(data, sampling_rate, n, overlap, sigma, zoom_t, zoom_f, tl, fl)
         if compute_type == 'ifdgram':
             results.append(ifdgram)
         elif compute_type == 'zeros' or compute_type == 'combined':
@@ -107,14 +106,11 @@ def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024,
                 scale_t = ifdgram.shape[1] / inv_mag.shape[1]
                 inv_mag = scipy_zoom(inv_mag, (scale_f, scale_t), order=1)
             results.append((inv_mag, ifdgram))  # Store both for combined view
-        elif compute_type == 'crossings' or compute_type == 'ridges':
+        elif compute_type == 'crossings':
             # Binary detection: mark where both |t_disp| and |f_disp| are small
             # Take only lower half (positive frequencies)
             t_d = t_disp[:n//2, :]
             f_d = f_disp[:n//2, :]
-            # Get partial reassignments for power integration along ridges
-            ifd_t = ifdgram_t[:n//2, :]  # Time-only reassigned (for t_d=0 ridges)
-            ifd_f = ifdgram_f[:n//2, :]  # Freq-only reassigned (for f_d=0 ridges)
             # Resize to match ifdgram dimensions
             if t_d.shape != ifdgram.shape:
                 from scipy.ndimage import zoom as scipy_zoom
@@ -122,9 +118,7 @@ def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024,
                 scale_t = ifdgram.shape[1] / t_d.shape[1]
                 t_d = scipy_zoom(t_d, (scale_f, scale_t), order=1)
                 f_d = scipy_zoom(f_d, (scale_f, scale_t), order=1)
-                ifd_t = scipy_zoom(ifd_t, (scale_f, scale_t), order=1)
-                ifd_f = scipy_zoom(ifd_f, (scale_f, scale_t), order=1)
-            results.append((t_d, f_d, ifdgram, ifd_t, ifd_f))
+            results.append((t_d, f_d, ifdgram))
         else:
             # Sonogram view - resample to match ifdgram dimensions for alignment
             sono_mag = np.abs(sonogram)
@@ -144,14 +138,13 @@ def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024,
         keep_bins = int(freq_bins * crop_f)
         crop_start = freq_bins - keep_bins
         results = [(inv[crop_start:], ifd[crop_start:]) for inv, ifd in results]
-    elif compute_type in ['crossings', 'ridges']:
-        # Results are tuples of (t_disp, f_disp, ifdgram, ifdgram_t, ifdgram_f)
+    elif compute_type == 'crossings':
         first_item = results[0][0]
         freq_bins = first_item.shape[0]
         keep_bins = int(freq_bins * crop_f)
         crop_start = freq_bins - keep_bins
-        results = [(t[crop_start:], f[crop_start:], ifd[crop_start:], ifd_t[crop_start:], ifd_f[crop_start:]) 
-                   for t, f, ifd, ifd_t, ifd_f in results]
+        results = [(t[crop_start:], f[crop_start:], ifd[crop_start:]) 
+                   for t, f, ifd in results]
     else:
         freq_bins = results[0].shape[0]
         keep_bins = int(freq_bins * crop_f)
@@ -208,7 +201,7 @@ def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024,
         from matplotlib.figure import Figure
         from matplotlib.backends.backend_agg import FigureCanvasAgg
         
-        t_d, f_d, ifdgram_data, _, _ = results[0]  # Ignore partial reassignments for crossings view
+        t_d, f_d, ifdgram_data = results[0]
         
         # Create figure with exact pixel dimensions
         h, w = t_d.shape
@@ -283,215 +276,6 @@ def compute_spectrogram(wav_name, sigmas, compute_type='ifdgram', fft_size=1024,
         
         rgb_uint8 = rgb_array.astype(np.uint8)
     
-    elif compute_type == 'ridges':
-        # Find contours that connect singularities, show longest ones
-        import sys
-        print(f"=== RIDGES: Starting computation ===", file=sys.stderr, flush=True)
-        import matplotlib
-        matplotlib.use('Agg')
-        from matplotlib.figure import Figure
-        from matplotlib.backends.backend_agg import FigureCanvasAgg
-        import matplotlib.pyplot as plt
-        
-        t_d, f_d, ifdgram_data, ifdgram_t_data, ifdgram_f_data = results[0]
-        h, w = t_d.shape
-        
-        # First find singularities (same logic as crossings)
-        t_sign_change = ((t_d[:-1,:-1] * t_d[1:,1:] < 0) | (t_d[:-1,1:] * t_d[1:,:-1] < 0))
-        f_sign_change = ((f_d[:-1,:-1] * f_d[1:,1:] < 0) | (f_d[:-1,1:] * f_d[1:,:-1] < 0))
-        zeros_mask = t_sign_change & f_sign_change
-        
-        dt_dx = np.diff(t_d, axis=1)
-        dt_dy = np.diff(t_d, axis=0)
-        df_dx = np.diff(f_d, axis=1)
-        df_dy = np.diff(f_d, axis=0)
-        dt_dx_avg = (dt_dx[:-1,:] + dt_dx[1:,:]) / 2
-        dt_dy_avg = (dt_dy[:,:-1] + dt_dy[:,1:]) / 2
-        df_dx_avg = (df_dx[:-1,:] + df_dx[1:,:]) / 2
-        df_dy_avg = (df_dy[:,:-1] + df_dy[:,1:]) / 2
-        det_J = dt_dx_avg * df_dy_avg - dt_dy_avg * df_dx_avg
-        det_thresh = np.std(np.abs(det_J)) * 0.5
-        singularities = zeros_mask & (np.abs(det_J) > det_thresh)
-        
-        # Get singularity coordinates in (row, col) format
-        sing_y, sing_x = np.where(singularities)
-        sing_coords = set(zip(sing_y, sing_x))
-        
-        # Pre-compute singularity proximity mask for fast lookup
-        # Create a label image where each pixel stores the index of the nearest singularity (or -1)
-        from scipy.ndimage import distance_transform_edt
-        sing_mask = np.zeros((h, w), dtype=bool)
-        sing_mask[sing_y, sing_x] = True
-        
-        # Compute distance to nearest singularity and the index of that singularity
-        # We'll use a different approach: dilate each singularity and label regions
-        sing_label = np.full((h, w), -1, dtype=np.int32)
-        for idx, (sy, sx) in enumerate(zip(sing_y, sing_x)):
-            sing_label[sy, sx] = idx
-        
-        # Dilate to create proximity regions (tolerance=5 pixels)
-        proximity_tolerance = 5
-        from scipy.ndimage import maximum_filter
-        # Use distance transform to find pixels within tolerance of any singularity
-        dist_to_sing, nearest_indices = distance_transform_edt(~sing_mask, return_indices=True)
-        near_sing_mask = dist_to_sing <= proximity_tolerance
-        # For each pixel, get the singularity index it's nearest to
-        sing_proximity_idx = np.where(near_sing_mask, 
-                                       sing_label[nearest_indices[0], nearest_indices[1]], 
-                                       -1)
-        
-        # Create figure matching image dimensions
-        dpi = 100
-        fig = Figure(figsize=(w/dpi, h/dpi), dpi=dpi)
-        canvas = FigureCanvasAgg(fig)
-        ax = fig.add_axes([0, 0, 1, 1])
-        ax.set_xlim(0, w)
-        ax.set_ylim(h, 0)  # Flip y-axis so origin is top-left like image
-        ax.set_axis_off()
-        
-        # Normalize ifdgram for background
-        ifd_norm = np.log(ifdgram_data + 0.3)
-        ifd_norm = (ifd_norm - ifd_norm.min()) / (ifd_norm.max() - ifd_norm.min() + 1e-10)
-        # bg_intensity controls brightness: 1.0 = full, 0.0 = very dim
-        bg_vmax = 1.0 / max(bg_intensity, 0.1)
-        ax.imshow(ifd_norm, cmap='gray', vmin=0, vmax=bg_vmax, aspect='auto', extent=[0, w, h, 0])
-        
-        # Debug: check displacement arrays
-        print(f"t_d shape: {t_d.shape}, min={t_d.min():.2f}, max={t_d.max():.2f}", file=sys.stderr, flush=True)
-        print(f"f_d shape: {f_d.shape}, min={f_d.min():.2f}, max={f_d.max():.2f}", file=sys.stderr, flush=True)
-        
-        # Extract contour paths using matplotlib
-        import matplotlib.pyplot as plt
-        fig_temp, ax_temp = plt.subplots()
-        t_cs = ax_temp.contour(t_d, levels=[0])
-        f_cs = ax_temp.contour(f_d, levels=[0])
-        t_paths = t_cs.allsegs[0] if hasattr(t_cs, 'allsegs') else [p.vertices for p in t_cs.get_paths()]
-        f_paths = f_cs.allsegs[0] if hasattr(f_cs, 'allsegs') else [p.vertices for p in f_cs.get_paths()]
-        plt.close(fig_temp)
-        print(f"t_paths: {len(t_paths)}, f_paths: {len(f_paths)}", file=sys.stderr, flush=True)
-        
-        def segment_contour_at_zeros(verts, sing_proximity_idx, h, w):
-            """Split a contour into segments at each zero crossing.
-            Uses pre-computed sing_proximity_idx array for O(1) lookups."""
-            if len(verts) < 2:
-                return []
-            
-            # Vectorized coordinate conversion
-            cols = np.clip(verts[:, 0].astype(np.int32), 0, w - 1)
-            rows = np.clip(verts[:, 1].astype(np.int32), 0, h - 1)
-            sing_indices = sing_proximity_idx[rows, cols]
-            
-            # Find singularity crossings
-            crossing_indices = []
-            crossing_sings = []
-            last_sing = -1
-            
-            for i, sing_idx in enumerate(sing_indices):
-                if sing_idx != -1 and sing_idx != last_sing:
-                    crossing_indices.append(i)
-                    crossing_sings.append(sing_idx)
-                    last_sing = sing_idx
-                elif sing_idx == -1:
-                    last_sing = -1
-            
-            if len(crossing_indices) < 2:
-                return []
-            
-            # Create segments
-            segments = []
-            for i in range(len(crossing_indices) - 1):
-                start_idx = crossing_indices[i]
-                end_idx = crossing_indices[i + 1]
-                if end_idx - start_idx >= 2:
-                    seg_verts = verts[start_idx:end_idx + 1]
-                    segments.append((seg_verts, crossing_sings[i], crossing_sings[i + 1]))
-            
-            return segments
-        
-        def touches_boundary(path_verts, h, w, margin=3):
-            """Check if any point touches image boundary (vectorized)."""
-            cols, rows = path_verts[:, 0], path_verts[:, 1]
-            return np.any((cols < margin) | (cols > w - margin - 1) | 
-                         (rows < margin) | (rows > h - margin - 1))
-        
-        def integrate_power(verts, power_image):
-            """Integrate power along ridge (vectorized)."""
-            h, w = power_image.shape
-            cols = np.clip(verts[:, 0].astype(np.int32), 0, w - 1)
-            rows = np.clip(verts[:, 1].astype(np.int32), 0, h - 1)
-            return power_image[rows, cols].sum()
-        
-        def get_upper_bound(verts, power_image):
-            """Get upper bound on integrated power using bounding box max."""
-            h, w = power_image.shape
-            cols = np.clip(verts[:, 0].astype(np.int32), 0, w - 1)
-            rows = np.clip(verts[:, 1].astype(np.int32), 0, h - 1)
-            min_r, max_r = rows.min(), rows.max() + 1
-            min_c, max_c = cols.min(), cols.max() + 1
-            max_power_in_region = power_image[min_r:max_r, min_c:max_c].max()
-            return len(verts) * max_power_in_region
-        
-        # Collect top ridge segments using heap with bounding box pre-filter
-        import heapq
-        n_top = 200  # Target number of top segments
-        top_heap = []  # Min-heap of (power, counter, segment_data) - counter prevents array comparison
-        threshold = 0.0  # Minimum power to beat to enter top-N
-        
-        total_segments = 0
-        skipped_by_filter = 0
-        counter = 0  # Unique tiebreaker to prevent numpy array comparisons
-        
-        for paths, ctype, power_image in [(t_paths, 't', ifdgram_t_data), (f_paths, 'f', ifdgram_f_data)]:
-            # Use time-only reassignment for t_d=0 ridges, freq-only for f_d=0 ridges
-            for verts in paths:
-                verts = np.array(verts)
-                for seg_verts, start_sing, end_sing in segment_contour_at_zeros(verts, sing_proximity_idx, h, w):
-                    if touches_boundary(seg_verts, h, w):
-                        continue
-                    total_segments += 1
-                    
-                    # Pre-filter: check if upper bound can beat current threshold
-                    if len(top_heap) >= n_top:
-                        upper_bound = get_upper_bound(seg_verts, power_image)
-                        if upper_bound <= threshold:
-                            skipped_by_filter += 1
-                            continue
-                    
-                    # Compute exact power using appropriate partial reassignment
-                    power = integrate_power(seg_verts, power_image)
-                    
-                    # Add to heap (counter as tiebreaker prevents numpy array comparison)
-                    if len(top_heap) < n_top:
-                        heapq.heappush(top_heap, (power, counter, ctype, seg_verts, start_sing, end_sing))
-                        counter += 1
-                        if len(top_heap) == n_top:
-                            threshold = top_heap[0][0]  # Update threshold
-                    elif power > threshold:
-                        heapq.heapreplace(top_heap, (power, counter, ctype, seg_verts, start_sing, end_sing))
-                        counter += 1
-                        threshold = top_heap[0][0]  # Update threshold
-        
-        # Convert heap to sorted list (highest power first)
-        top_segments = [(item[2], item[3], item[0], item[4], item[5]) for item in sorted(top_heap, reverse=True)]
-        
-        print(f"Ridges: {len(sing_coords)} singularities, {total_segments} segments, {skipped_by_filter} skipped by filter", file=sys.stderr, flush=True)
-        
-        # Debug: show power range
-        if top_segments:
-            powers = [s[2] for s in top_segments]
-            print(f"Showing top {len(top_segments)} ridge segments by integrated power", file=sys.stderr, flush=True)
-            print(f"Power range: max={powers[0]:.2f}, min={powers[-1]:.2f}", file=sys.stderr, flush=True)
-        
-        # Draw top segments - verts are (col, row) = (x, y)
-        for ctype, verts, length, start_sing, end_sing in top_segments:
-            color = 'red' if ctype == 't' else 'blue'
-            ax.plot(verts[:, 0], verts[:, 1], color=color, linewidth=0.5, zorder=5)
-        
-        canvas.draw()
-        buf = canvas.buffer_rgba()
-        rgb_array = np.asarray(buf)[:, :, :3]
-        rgb_uint8 = rgb_array.astype(np.uint8)
-    
     else:
         # Normalize each channel with log transform
         def normalize(img, offset):
@@ -559,7 +343,6 @@ def compute():
     lock_f = data.get('lock_f', 5)
     log_offset = data.get('log_offset', 0.3)
     crop_f = data.get('crop_f', 1.0)
-    bg_intensity = data.get('bg_intensity', 0.5)
     
     if not wav_name:
         return jsonify({'error': 'No WAV file specified'}), 400
@@ -583,25 +366,23 @@ def compute():
     except (ValueError, TypeError):
         return jsonify({'error': 'Invalid FFT or step size'}), 400
     
-    # Validate superres, lock, log_offset, crop, and bg_intensity parameters
+    # Validate superres, lock, log_offset, and crop parameters
     try:
         superres = int(superres)
         lock_t = int(lock_t)
         lock_f = int(lock_f)
         log_offset = float(log_offset)
         crop_f = float(crop_f)
-        bg_intensity = float(bg_intensity)
         superres = max(1, min(10, superres))
         lock_t = max(1, min(50, lock_t))
         lock_f = max(1, min(50, lock_f))
         log_offset = max(0.01, min(10.0, log_offset))
         crop_f = max(0.1, min(1.0, crop_f))
-        bg_intensity = max(0.0, min(1.0, bg_intensity))
     except (ValueError, TypeError):
-        return jsonify({'error': 'Invalid superres, lock, log_offset, crop, or bg_intensity parameters'}), 400
+        return jsonify({'error': 'Invalid superres, lock, log_offset, or crop parameters'}), 400
     
     img_base64, error = compute_spectrogram(wav_name, sigmas, compute_type, fft_size, step_size,
-                                            superres, lock_t, lock_f, log_offset, crop_f, bg_intensity)
+                                            superres, lock_t, lock_f, log_offset, crop_f)
     
     if error:
         return jsonify({'error': error}), 400

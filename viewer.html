@@ -183,12 +183,11 @@
         <select id="wavSelect"></select>
         
         <div class="type-toggle">
-            <button id="btnIfdgram" class="active" onclick="setType('ifdgram')">ifdgram</button>
+            <button id="btnIfdgram" onclick="setType('ifdgram')">ifdgram</button>
             <button id="btnSonogram" onclick="setType('sonogram')">sonogram</button>
             <button id="btnZeros" onclick="setType('zeros')">zeros</button>
-            <button id="btnCombined" onclick="setType('combined')">combined</button>
+            <button id="btnCombined" class="active" onclick="setType('combined')">combined</button>
             <button id="btnCrossings" onclick="setType('crossings')">crossings</button>
-            <button id="btnRidges" onclick="setType('ridges')">ridges</button>
         </div>
         
         <div class="divider"></div>
@@ -272,11 +271,11 @@
         <div class="control-group">
             <label>CropF:</label>
             <button onclick="adjustCropF(-0.1)">−</button>
-            <input type="number" id="cropF" value="0.4" min="0.1" max="1" step="0.1" style="width:60px" oninput="render()">
+                <input type="number" id="cropF" value="0.7" min="0.1" max="1" step="0.1" style="width:60px" oninput="render()">
             <button onclick="adjustCropF(0.1)">+</button>
         </div>
         
-        <div id="standardThresholds">
+        <div id="standardThresholds" style="display:none">
             <div class="control-group">
                 <label>Min:</label>
                 <button onclick="adjustThreshold('threshMin', -0.05)">−</button>
@@ -292,23 +291,23 @@
             </div>
         </div>
         
-        <div id="combinedControls" style="display:none">
+        <div id="combinedControls">
             <div class="control-group">
                 <label>Zeros Min:</label>
                 <button onclick="adjustCombined('zerosMin', -0.05)">−</button>
-                <input type="number" id="zerosMin" value="0.0" min="0" max="1" step="0.05" style="width:55px" oninput="render()">
+                <input type="number" id="zerosMin" value="0.25" min="0" max="1" step="0.05" style="width:55px" oninput="render()">
                 <button onclick="adjustCombined('zerosMin', 0.05)">+</button>
             </div>
             <div class="control-group">
                 <label>Zeros Max:</label>
                 <button onclick="adjustCombined('zerosMax', -0.05)">−</button>
-                <input type="number" id="zerosMax" value="1.0" min="0" max="1" step="0.05" style="width:55px" oninput="render()">
+                <input type="number" id="zerosMax" value="0.85" min="0" max="1" step="0.05" style="width:55px" oninput="render()">
                 <button onclick="adjustCombined('zerosMax', 0.05)">+</button>
             </div>
             <div class="control-group">
                 <label>IFD Min:</label>
                 <button onclick="adjustCombined('ifdMin', -0.05)">−</button>
-                <input type="number" id="ifdMin" value="0.0" min="0" max="1" step="0.05" style="width:55px" oninput="render()">
+                <input type="number" id="ifdMin" value="0.25" min="0" max="1" step="0.05" style="width:55px" oninput="render()">
                 <button onclick="adjustCombined('ifdMin', 0.05)">+</button>
             </div>
             <div class="control-group">
@@ -316,15 +315,6 @@
                 <button onclick="adjustCombined('ifdMax', -0.05)">−</button>
                 <input type="number" id="ifdMax" value="1.0" min="0" max="1" step="0.05" style="width:55px" oninput="render()">
                 <button onclick="adjustCombined('ifdMax', 0.05)">+</button>
-            </div>
-        </div>
-        
-        <div id="ridgesControls" style="display:none">
-            <div class="control-group">
-                <label>Background:</label>
-                <button onclick="adjustRidges('bgIntensity', -0.1)">−</button>
-                <input type="number" id="bgIntensity" value="0.5" min="0" max="1" step="0.1" style="width:55px" oninput="recompute(false)">
-                <button onclick="adjustRidges('bgIntensity', 0.1)">+</button>
             </div>
         </div>
         
@@ -474,7 +464,7 @@
     <script>
         let wavFiles = [];
         let currentWav = '';
-        let currentType = 'ifdgram';
+        let currentType = 'combined';
         let scaleX = 1.0;
         let scaleY = 1.0;
         let panX = 0;
@@ -582,11 +572,8 @@
             document.getElementById('btnZeros').classList.toggle('active', type === 'zeros');
             document.getElementById('btnCombined').classList.toggle('active', type === 'combined');
             document.getElementById('btnCrossings').classList.toggle('active', type === 'crossings');
-            document.getElementById('btnRidges').classList.toggle('active', type === 'ridges');
-            // Show/hide appropriate threshold controls for combined vs other views
-            document.getElementById('standardThresholds').style.display = (type === 'combined' || type === 'ridges') ? 'none' : '';
+            document.getElementById('standardThresholds').style.display = type === 'combined' ? 'none' : '';
             document.getElementById('combinedControls').style.display = type === 'combined' ? '' : 'none';
-            document.getElementById('ridgesControls').style.display = type === 'ridges' ? '' : 'none';
             recompute(false);  // Don't reset view when switching type
         }
         
@@ -642,14 +629,6 @@
             value = Math.max(0, Math.min(1, value + delta));
             input.value = value.toFixed(2);
             render();  // Real-time WebGL update
-        }
-        
-        function adjustRidges(id, delta) {
-            const input = document.getElementById(id);
-            let value = parseFloat(input.value) || 0;
-            value = Math.max(0, Math.min(1, value + delta));
-            input.value = value.toFixed(1);
-            recompute(false);  // Need to recompute to change zeros color
         }
         
         async function loadWavList() {
@@ -870,8 +849,6 @@
             computeBtn.disabled = true;
             
             try {
-                const bgIntensity = parseFloat(document.getElementById('bgIntensity').value) || 0.5;
-                
                 const response = await fetch('/api/compute', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -885,8 +862,7 @@
                         lock_t: lockT,
                         lock_f: lockF,
                         log_offset: logOffset,
-                        crop_f: 1.0,  // Always compute full range, WebGL handles cropping
-                        bg_intensity: bgIntensity
+                        crop_f: 1.0
                     })
                 });
                 
@@ -1095,9 +1071,14 @@
             document.getElementById('lockT').value = '5';
             document.getElementById('lockF').value = '5';
             document.getElementById('logOffset').value = '0.3';
-            document.getElementById('cropF').value = '0.4';
+            document.getElementById('cropF').value = '0.7';
             document.getElementById('threshMin').value = '0.00';
             document.getElementById('threshMax').value = '0.10';
+            document.getElementById('zerosMin').value = '0.25';
+            document.getElementById('zerosMax').value = '0.85';
+            document.getElementById('ifdMin').value = '0.25';
+            document.getElementById('ifdMax').value = '1.00';
+            setType('combined');
         }
         
         // WAV select change - reset to defaults and load audio
