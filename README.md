@@ -3,7 +3,7 @@
 A Python-based tool for computing and visualizing reassigned spectrograms with an interactive WebGL viewer. Based on the algorithm described in Gardner & Magnasco, PNAS 2006.
 
 ![Spectrogram Viewer](screenshot.png)
-*Interactive spectrogram viewer with reassigned spectrogram (ifdgram) display.*
+*Interactive spectrogram viewer showing combined view with zeros overlay.*
 
 ## What is a Reassigned Spectrogram?
 
@@ -49,7 +49,7 @@ Open http://localhost:8000 in your browser.
 
 *Compute Parameters (require recomputation via Compute button):*
 - **WAV selector** - Choose which audio file to analyze (parameters reset to defaults when switching)
-- **ifdgram/sonogram** - Toggle between reassigned and standard spectrogram
+- **View mode** - Toggle between ifdgram, sonogram, zeros, combined, and crossings views
 - **σ (ms)** - Three sigma values for R, G, B channels
 - **FFT** - FFT window size (256, 512, 1024, 2048, 4096)
 - **Step** - Samples between windows (smaller = higher time resolution)
@@ -60,7 +60,8 @@ Open http://localhost:8000 in your browser.
 
 *Display Parameters (real-time WebGL, no recomputation needed):*
 - **CropF** - Frequency crop factor (0.1-1.0, show low frequencies)
-- **Min/Max** - Intensity thresholds for display contrast
+- **Min/Max** - Intensity thresholds for display contrast (ifdgram, sonogram, zeros views)
+- **Zeros Min/Max, IFD Min/Max** - Separate thresholds for zeros overlay and ifdgram in combined view
 - **X/Y zoom** - Independent time and frequency zoom
 
 *Navigation:*
@@ -97,7 +98,7 @@ The FFT window size controls the frequency resolution:
 - **Larger (2048, 4096)** - Better frequency resolution, smoother in time
 
 ### Step Size
-The number of samples between successive windows (default: 72). `overlap = fft_size - step_size`.
+The number of samples between successive windows (default: 4). `overlap = fft_size - step_size`.
 - **Smaller step** - More overlap, sharper lines, but wider images and slower computation
 - **Larger step** - Less overlap, faster computation, narrower images
 
@@ -113,7 +114,7 @@ Control the removal of "stray points" in the reassigned spectrogram:
 
 ### CropF (Frequency Crop)
 Controls what fraction of the frequency spectrum to display (0.1-1.0):
-- **0.4** (default) - Show bottom 40% of frequency range
+- **0.7** (default) - Show bottom 70% of frequency range
 - **1.0** - Show full frequency spectrum
 - **0.5** - Show bottom half (lower frequencies)
 
@@ -121,10 +122,12 @@ This is a real-time WebGL control - adjust instantly without recomputing.
 
 ### Min/Max (Intensity Thresholds)
 Real-time display controls for adjusting contrast:
-- **Min** (default 0.05) - Values below this threshold become black
-- **Max** (default 0.80) - Values above this threshold become maximum intensity
+- **Min** (default 0.00) - Values below this threshold become black
+- **Max** (default 0.10) - Values above this threshold become maximum intensity
 
 Colors are rescaled between these thresholds, allowing interactive adjustment of dynamic range without recomputing the spectrogram.
+
+In **combined view**, separate thresholds are provided for the zeros overlay (Zeros Min/Max) and the ifdgram background (IFD Min/Max).
 
 ### LogOff (Log Offset)
 Controls the offset in the log scale transformation `log(amp + offset)`:
