@@ -7,8 +7,8 @@ A Python-based tool for computing and visualizing reassigned spectrograms with a
 
 ## What is a Reassigned Spectrogram?
 
-Standard spectrograms suffer from a tradeoff between time and frequency resolution. Reassigned spectrograms (also called "remapped sonograms") use the phase information to sharpen the representation, producing cleaner spectral lines without sacrificing resolution.
-This visualizer computes the spectrogram at multiple timescales (sigma values) and combines them. This implementation displays three timescales as RGB channels, allowing you to see which features are consistent across scales.
+Standard spectrograms suffer from a tradeoff between time and frequency resolution. Reassigned spectrograms (also called "remapped sonograms") use phase information to reassign energy to more precise time-frequency coordinates. The fundamental tradeoff remains, but for sparse signals — where individual components are well-separated — reassignment can dramatically improve localization precision.
+This visualizer computes the spectrogram at multiple timescales (sigma values). In the **ifdgram** view, three timescales are displayed as RGB channels, allowing you to see which features are consistent across scales. The **combined** view overlays zero-crossing contours on the reassigned spectrogram, highlighting the spectral structure.
 
 ## Installation
 
@@ -43,7 +43,7 @@ python server.py           # start server
 
 Open http://localhost:8000 in your browser.
 
-**Note:** You must run `python server.py` from inside the specviewer folder so it can find the WAV files and viewer.html.
+**Note:** Place your WAV files in the same directory as `server.py`, and run `python server.py` from that directory. The server automatically detects all `.wav` files in its folder.
 
 **Controls:**
 
