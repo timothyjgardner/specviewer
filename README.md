@@ -8,7 +8,7 @@ A Python-based tool for computing and visualizing reassigned spectrograms with a
 ## What is a Reassigned Spectrogram?
 
 Standard spectrograms suffer from a tradeoff between time and frequency resolution. Reassigned spectrograms (also called "remapped sonograms") use phase information to reassign energy to more precise time-frequency coordinates. The fundamental tradeoff remains, but for sparse signals — where individual components are well-separated — reassignment can dramatically improve localization precision.
-This visualizer computes the spectrogram at multiple timescales (sigma values). In the **ifdgram** view, three timescales are displayed as RGB channels, allowing you to see which features are consistent across scales. The **combined** view overlays zero-crossing contours on the reassigned spectrogram, highlighting the spectral structure.
+This visualizer computes the spectrogram at multiple timescales (sigma values). In the **reassigned** view, three timescales are displayed as RGB channels, allowing you to see which features are consistent across scales. The **combined** view blends the reassigned spectrogram with the spectral zeros (where the magnitude approaches zero), highlighting both the signal energy and the structure between spectral lines. The **crossings** view shows the zero contours of the time displacement (red) and frequency displacement (blue) from the reassignment map. Where both contours intersect, the reassignment has a singularity — a topologically stable point marked with a dot (white for positive charge, yellow for negative). These singularities are robust features of the time-frequency representation.
 
 ## Installation
 
@@ -49,7 +49,7 @@ Open http://localhost:8000 in your browser.
 
 *Compute Parameters (require recomputation via Compute button):*
 - **WAV selector** - Choose which audio file to analyze (parameters reset to defaults when switching)
-- **View mode** - Toggle between ifdgram, sonogram, zeros, combined, and crossings views
+- **View mode** - Toggle between reassigned, sonogram, zeros, combined, and crossings views
 - **σ (ms)** - Three sigma values for R, G, B channels
 - **FFT** - FFT window size (256, 512, 1024, 2048, 4096)
 - **Step** - Samples between windows (smaller = higher time resolution)
@@ -60,8 +60,8 @@ Open http://localhost:8000 in your browser.
 
 *Display Parameters (real-time WebGL, no recomputation needed):*
 - **CropF** - Frequency crop factor (0.1-1.0, show low frequencies)
-- **Min/Max** - Intensity thresholds for display contrast (ifdgram, sonogram, zeros views)
-- **Zeros Min/Max, IFD Min/Max** - Separate thresholds for zeros overlay and ifdgram in combined view
+- **Min/Max** - Intensity thresholds for display contrast (reassigned, sonogram, zeros views)
+- **Zeros Min/Max, IFD Min/Max** - Separate thresholds for zeros overlay and reassigned spectrogram in combined view
 - **X/Y zoom** - Independent time and frequency zoom
 
 *Navigation:*
@@ -75,7 +75,7 @@ Open http://localhost:8000 in your browser.
 - **Play** - Play the audio for the currently visible time range
 - **Stop** - Stop audio playback
 
-**Caching:** Computed spectrograms are cached on the server. Switching between files or toggling ifdgram/sonogram with the same parameters is instant after the first computation.
+**Caching:** Computed spectrograms are cached on the server. Switching between files or toggling reassigned/sonogram with the same parameters is instant after the first computation.
 
 ## Parameters
 
@@ -127,7 +127,7 @@ Real-time display controls for adjusting contrast:
 
 Colors are rescaled between these thresholds, allowing interactive adjustment of dynamic range without recomputing the spectrogram.
 
-In **combined view**, separate thresholds are provided for the zeros overlay (Zeros Min/Max) and the ifdgram background (IFD Min/Max).
+In **combined view**, separate thresholds are provided for the zeros overlay (Zeros Min/Max) and the reassigned spectrogram background (IFD Min/Max).
 
 ### LogOff (Log Offset)
 Controls the offset in the log scale transformation `log(amp + offset)`:
